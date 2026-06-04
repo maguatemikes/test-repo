@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 232 53% 25%;            /* navy #1E2761 */
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 358 92% 68%;             /* coral #F96167 */
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 232 53% 25%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground; font-family: Inter, system-ui, sans-serif; }
+}
+
+/* Wireframe-style chip variants (use until shadcn Badge variants are extended) */
+.chip {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  padding: 0.125rem 0.5rem; border-radius: 9999px;
+  font-size: 0.75rem; font-weight: 500; border-width: 1px;
+}
+.chip-primary { background: #FEEAEA; color: #B71C1C; border-color: #FBC0C0; }
+.chip-success { background: #E8F4EA; color: #1B5E20; border-color: #C8E2CB; }
+.chip-warn    { background: #FFF6E0; color: #8B5A00; border-color: #F2D88E; }
+.chip-neutral { background: #ECEFF6; color: #455064; border-color: #D7DCE8; }
+.chip-info    { background: #E6EDF7; color: #1E2761; border-color: #C7D3E8; }
