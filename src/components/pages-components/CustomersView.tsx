@@ -6,7 +6,7 @@ import { ListsView } from "./ListsView";
 import { SegmentsView } from "./SegmentsView";
 import { ImportCsvModal } from "../ImportCsvModal";
 
-const customers = [
+const mockCustomers = [
   { id: "C001", name: "Sarah Mitchell", email: "sarah.m@outlook.com", phone: "+1 (555) 201-4821", tags: ["VIP", "Loyal"], spend: "$4,820", ltv: 4820, lastOrder: "Jun 2, 2026", lastEmail: "3h ago", status: "active", location: "New York, USA", joined: "Mar 12, 2024" },
   { id: "C002", name: "James Okafor", email: "j.okafor@gmail.com", phone: "+1 (555) 938-2210", tags: ["At Risk"], spend: "$1,240", ltv: 1240, lastOrder: "Jan 14, 2026", lastEmail: "68d ago", status: "at-risk", location: "Lagos, Nigeria", joined: "Aug 5, 2024" },
   { id: "C003", name: "Priya Nair", email: "priya.nair@work.co", phone: "+91 98210 55312", tags: ["VIP", "High LTV"], spend: "$9,100", ltv: 9100, lastOrder: "May 28, 2026", lastEmail: "6d ago", status: "active", location: "Bangalore, India", joined: "Jan 2, 2023" },
@@ -82,7 +82,7 @@ function avatarColor(id: string) {
   return colors[idx];
 }
 
-function CustomerDrawer({ customer, onClose }: { customer: typeof customers[0]; onClose: () => void }) {
+function CustomerDrawer({ customer, onClose }: { customer: typeof mockCustomers[0]; onClose: () => void }) {
   const [drawerTab, setDrawerTab] = useState<DrawerTab>("overview");
   const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
   const orders = drawerOrders[customer.id] || [];
@@ -317,14 +317,18 @@ function CustomerDrawer({ customer, onClose }: { customer: typeof customers[0]; 
 interface CustomersViewProps {
   initialTab?: SubTab;
   onSubTabChange?: (tab: SubTab) => void;
+  /** Real customers loaded from the database (prepended to the table). */
+  dbCustomers?: typeof mockCustomers;
 }
 
-export function CustomersView({ initialTab = "customers", onSubTabChange }: CustomersViewProps) {
+export function CustomersView({ initialTab = "customers", onSubTabChange, dbCustomers }: CustomersViewProps) {
+  // Real DB rows first, then the demo data below them.
+  const customers = [...(dbCustomers ?? []), ...mockCustomers];
   const [subTab, setSubTab] = useState<SubTab>(initialTab);
   const [query, setQuery] = useState("");
   const [activeChip, setActiveChip] = useState("all");
   const [selected, setSelected] = useState<string[]>([]);
-  const [drawerCustomer, setDrawerCustomer] = useState<typeof customers[0] | null>(null);
+  const [drawerCustomer, setDrawerCustomer] = useState<typeof mockCustomers[0] | null>(null);
   const [csvModalOpen, setCsvModalOpen] = useState(false);
 
   // Sync when sidebar drives a tab change externally

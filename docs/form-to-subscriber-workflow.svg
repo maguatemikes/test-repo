@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 580" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="aDark" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#475569"/>
+    </marker>
+    <marker id="aAmber" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#D97706"/>
+    </marker>
+    <marker id="aPurple" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#7C3AED"/>
+    </marker>
+    <marker id="aGreen" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#16A34A"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1280" height="580" fill="#F8FAFC"/>
+  <text x="32" y="34" font-size="20" font-weight="700" fill="#0F172A">Form → Subscriber → List · Workflow</text>
+  <text x="32" y="56" font-size="12.5" fill="#64748B">How a public form submission becomes a CRM subscriber and is reflected into a list (via the form's target_list_id).</text>
+
+  <!-- Lane headers -->
+  <rect x="24"  y="74" width="290" height="30" rx="6" fill="#2563EB"/>
+  <text x="169" y="94" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">1 · PUBLIC FORM (visitor)</text>
+  <rect x="326" y="74" width="320" height="30" rx="6" fill="#D97706"/>
+  <text x="486" y="94" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">2 · SUBMIT API (server)</text>
+  <rect x="658" y="74" width="270" height="30" rx="6" fill="#16A34A"/>
+  <text x="793" y="94" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">3 · DATABASE (omnc)</text>
+  <rect x="940" y="74" width="316" height="30" rx="6" fill="#7C3AED"/>
+  <text x="1098" y="94" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">4 · CRM DASHBOARD (front end)</text>
+
+  <!-- Lane 1 boxes -->
+  <rect x="40" y="124" width="258" height="74" rx="8" fill="#fff" stroke="#CBD5E1"/>
+  <text x="169" y="146" font-size="12.5" font-weight="700" fill="#1D4ED8" text-anchor="middle">Public form</text>
+  <text x="169" y="166" font-size="11.5" fill="#334155" text-anchor="middle">Hosted page  /f/{slug}</text>
+  <text x="169" y="184" font-size="11.5" fill="#334155" text-anchor="middle">— or — Embed (script / iframe) on any site</text>
+
+  <rect x="40" y="216" width="258" height="44" rx="8" fill="#fff" stroke="#CBD5E1"/>
+  <text x="169" y="243" font-size="12" fill="#0F172A" text-anchor="middle">Visitor enters email + name</text>
+
+  <rect x="40" y="282" width="258" height="44" rx="8" fill="#EFF6FF" stroke="#93C5FD"/>
+  <text x="169" y="309" font-size="12" font-weight="600" fill="#1D4ED8" text-anchor="middle">Clicks  “Subscribe →”</text>
+
+  <line x1="169" y1="198" x2="169" y2="216" stroke="#475569" stroke-width="1.5" marker-end="url(#aDark)"/>
+  <line x1="169" y1="260" x2="169" y2="282" stroke="#475569" stroke-width="1.5" marker-end="url(#aDark)"/>
+
+  <!-- Lane1 -> Lane2 : POST -->
+  <path d="M298,304 C 322,304 320,143 342,143" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#aDark)"/>
+  <text x="300" y="120" font-size="10.5" font-weight="600" fill="#475569" text-anchor="end">HTTP POST</text>
+
+  <!-- Lane 2 steps -->
+  <g font-size="11" fill="#0F172A">
+    <rect x="342" y="124" width="288" height="36" rx="6" fill="#fff" stroke="#CBD5E1"/>
+    <text x="352" y="146">1 · Validate input + anti-spam (honeypot)</text>
+    <rect x="342" y="170" width="288" height="36" rx="6" fill="#fff" stroke="#CBD5E1"/>
+    <text x="352" y="192">2 · Look up form by slug → org_id, target_list_id</text>
+    <rect x="342" y="216" width="288" height="36" rx="6" fill="#fff" stroke="#CBD5E1"/>
+    <text x="352" y="238">3 · Upsert customer (dedupe by email + org)</text>
+    <rect x="342" y="262" width="288" height="36" rx="6" fill="#fff" stroke="#CBD5E1"/>
+    <text x="352" y="284">4 · Insert form-submission record</text>
+    <rect x="342" y="308" width="288" height="36" rx="6" fill="#ECFDF5" stroke="#86EFAC"/>
+    <text x="352" y="330" font-weight="600" fill="#15803D">5 · Add to list + member_count ++</text>
+    <rect x="342" y="354" width="288" height="36" rx="6" fill="#fff" stroke="#CBD5E1"/>
+    <text x="352" y="376">6 · form.submissions ++</text>
+    <rect x="342" y="400" width="288" height="36" rx="6" fill="#fff" stroke="#CBD5E1"/>
+    <text x="352" y="422">7 · (optional) enroll Welcome automation</text>
+  </g>
+  <g stroke="#94A3B8" stroke-width="1.2" marker-end="url(#aDark)">
+    <line x1="486" y1="160" x2="486" y2="170"/>
+    <line x1="486" y1="206" x2="486" y2="216"/>
+    <line x1="486" y1="252" x2="486" y2="262"/>
+    <line x1="486" y1="298" x2="486" y2="308"/>
+    <line x1="486" y1="344" x2="486" y2="354"/>
+    <line x1="486" y1="390" x2="486" y2="400"/>
+  </g>
+
+  <!-- Lane 3 tables -->
+  <g>
+    <rect x="674" y="124" width="238" height="40" rx="6" fill="#fff" stroke="#16A34A"/>
+    <text x="793" y="149" font-size="12" font-weight="600" fill="#166534" text-anchor="middle">crm_forms</text>
+    <rect x="674" y="174" width="238" height="40" rx="6" fill="#F0FDF4" stroke="#16A34A"/>
+    <text x="793" y="199" font-size="12" font-weight="700" fill="#166534" text-anchor="middle">crm_customers ★</text>
+    <rect x="674" y="224" width="238" height="40" rx="6" fill="#fff" stroke="#16A34A"/>
+    <text x="793" y="249" font-size="12" font-weight="600" fill="#166534" text-anchor="middle">crm_form_submissions</text>
+    <rect x="674" y="274" width="238" height="40" rx="6" fill="#F0FDF4" stroke="#16A34A"/>
+    <text x="793" y="299" font-size="12" font-weight="700" fill="#166534" text-anchor="middle">crm_list_members ★</text>
+    <rect x="674" y="324" width="238" height="40" rx="6" fill="#F0FDF4" stroke="#16A34A"/>
+    <text x="793" y="349" font-size="12" font-weight="700" fill="#166534" text-anchor="middle">crm_lists  (member_count) ★</text>
+  </g>
+
+  <!-- writes: lane2 -> lane3 (amber) -->
+  <g stroke="#D97706" stroke-width="1.6" fill="none" marker-end="url(#aAmber)">
+    <line x1="630" y1="188" x2="674" y2="150"/>
+    <line x1="630" y1="234" x2="674" y2="198"/>
+    <line x1="630" y1="280" x2="674" y2="248"/>
+    <line x1="630" y1="326" x2="674" y2="296"/>
+    <line x1="630" y1="326" x2="674" y2="342"/>
+  </g>
+
+  <!-- via-form list routing (green dashed) -->
+  <path d="M674,148 C 652,150 652,292 674,294" fill="none" stroke="#16A34A" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#aGreen)"/>
+  <text x="648" y="225" font-size="9.5" fill="#16A34A" text-anchor="middle" transform="rotate(-90 648 225)">target_list_id</text>
+
+  <!-- Lane 4 views -->
+  <rect x="956" y="138" width="284" height="84" rx="8" fill="#fff" stroke="#C4B5FD"/>
+  <text x="1098" y="162" font-size="12.5" font-weight="700" fill="#6D28D9" text-anchor="middle">Customers view</text>
+  <text x="1098" y="182" font-size="11.5" fill="#334155" text-anchor="middle">reads crm_customers</text>
+  <text x="1098" y="202" font-size="11.5" font-weight="600" fill="#15803D" text-anchor="middle">→ new subscriber appears</text>
+
+  <rect x="956" y="262" width="284" height="100" rx="8" fill="#F5F3FF" stroke="#A78BFA"/>
+  <text x="1098" y="286" font-size="12.5" font-weight="700" fill="#6D28D9" text-anchor="middle">Lists view</text>
+  <text x="1098" y="306" font-size="11.5" fill="#334155" text-anchor="middle">reads crm_lists + crm_list_members</text>
+  <text x="1098" y="326" font-size="11.5" font-weight="600" fill="#15803D" text-anchor="middle">→ member count +1 (reflected)</text>
+  <text x="1098" y="346" font-size="11.5" font-weight="600" fill="#15803D" text-anchor="middle">→ subscriber listed in the list</text>
+
+  <!-- reads: lane3 -> lane4 (purple) -->
+  <g stroke="#7C3AED" stroke-width="1.6" fill="none" marker-end="url(#aPurple)">
+    <line x1="912" y1="194" x2="956" y2="186"/>
+    <line x1="912" y1="294" x2="956" y2="312"/>
+    <line x1="912" y1="344" x2="956" y2="330"/>
+  </g>
+
+  <!-- Legend -->
+  <text x="32" y="500" font-size="12" font-weight="700" fill="#0F172A">Legend</text>
+  <line x1="100" y1="496" x2="140" y2="496" stroke="#D97706" stroke-width="2" marker-end="url(#aAmber)"/>
+  <text x="148" y="500" font-size="11.5" fill="#334155">write to DB</text>
+  <line x1="250" y1="496" x2="290" y2="496" stroke="#7C3AED" stroke-width="2" marker-end="url(#aPurple)"/>
+  <text x="298" y="500" font-size="11.5" fill="#334155">read by dashboard</text>
+  <line x1="430" y1="496" x2="470" y2="496" stroke="#16A34A" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#aGreen)"/>
+  <text x="478" y="500" font-size="11.5" fill="#334155">list routing via form (target_list_id)</text>
+
+  <text x="32" y="534" font-size="11" fill="#94A3B8">★ key tables.  Dedupe rule: a customer is matched by (email + organization_id) — a repeat signup updates, never duplicates.</text>
+  <text x="32" y="552" font-size="11" fill="#94A3B8">Reflection: dashboard views query omnc (Server Component / TanStack Query) — the subscriber appears on next load / refetch.</text>
+</svg>

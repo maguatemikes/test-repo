@@ -23,6 +23,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setMobileNavOpen(false);
   }, [pathname]);
 
+  // Public, embeddable routes (hosted forms) render standalone — no dashboard chrome.
+  const isStandalone = pathname?.startsWith("/f/") ?? false;
+  if (isStandalone) {
+    return <>{children}</>;
+  }
+
   const active = pathToSection(pathname);
   const customerSubTab =
     active === "customers" ? pathToCustomerSubTab(pathname) : undefined;
