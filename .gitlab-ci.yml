@@ -1,6 +1,5 @@
 # CI/CD pipeline for the CRM web app.
 # Runs on the self-hosted GitLab Runner on the app server (163.245.212.5).
-# No external container registry — the runner builds and deploys on the same machine.
 
 stages:
   - test
@@ -9,21 +8,17 @@ stages:
 cache:
   key:
     files:
-      - pnpm-lock.yaml
+      - package-lock.json
   paths:
-    - .pnpm-store/
+    - .npm/
     - node_modules/
 
 install-and-test:
   image: node:20-alpine
   stage: test
-  before_script:
-    - corepack enable
-    - corepack prepare pnpm@9.12.1 --activate
-    - pnpm config set store-dir .pnpm-store
   script:
-    - pnpm install --frozen-lockfile || pnpm install
-    - pnpm typecheck
+    - npm ci --cache .npm --prefer-offline --no-audit --progress=false
+    - npm run lint
 
 deploy-staging:
   stage: deploy
@@ -42,4 +37,4 @@ deploy-staging:
     - echo "Cleaning up unused images..."
     - docker image prune -f
   rules:
-    - if: $CI_COMMIT_BRANCH == "dev-branch"
+    - if: $CI_COMMIT_BRANCH == "dev-branch" || $CI_COMMIT_BRANCH == "feat/adopt-mike-ui"
