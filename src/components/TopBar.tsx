@@ -1,4 +1,4 @@
-import { Search, Bell, ChevronDown, Plus, X, CheckCircle2, AlertCircle, Info, User, Settings, LogOut, HelpCircle } from "lucide-react";
+import { Search, Bell, ChevronDown, Plus, X, CheckCircle2, AlertCircle, Info, User, Settings, LogOut, HelpCircle, Menu } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 
 const navTitles: Record<string, string> = {
@@ -53,9 +53,10 @@ interface TopBarProps {
   active: string;
   onNavigate: (section: any) => void;
   onAction?: () => void;
+  onMenuClick?: () => void;
 }
 
-export function TopBar({ active, onNavigate, onAction }: TopBarProps) {
+export function TopBar({ active, onNavigate, onAction, onMenuClick }: TopBarProps) {
   const [searchQuery, setSearchQuery]       = useState("");
   const [searchOpen, setSearchOpen]         = useState(false);
   const [notifOpen, setNotifOpen]           = useState(false);
@@ -80,19 +81,29 @@ export function TopBar({ active, onNavigate, onAction }: TopBarProps) {
 
   return (
     <header
-      className="flex items-center gap-3 px-6"
+      className="flex items-center gap-2 sm:gap-3 px-4 md:px-6"
       style={{ height: 56, background: "#FFFFFF", borderBottom: "1px solid var(--border)", fontFamily: font, minWidth: 0, position: "relative", zIndex: 40 }}
     >
+      {/* Hamburger (mobile only) */}
+      <button
+        onClick={onMenuClick}
+        className="flex items-center justify-center rounded md:hidden shrink-0"
+        style={{ width: 34, height: 34, background: "#F8FAFC", border: "1px solid var(--border)" }}
+        aria-label="Open menu"
+      >
+        <Menu size={16} color="#64748B" />
+      </button>
+
       <h1 style={{ fontSize: 15, fontWeight: 600, color: "#0F172A", whiteSpace: "nowrap" }}>
         {navTitles[active] || "Dashboard"}
       </h1>
-      <span style={{ color: "#CBD5E1", fontSize: 12 }}>/</span>
-      <span style={{ color: "#64748B", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>o/acme-corp</span>
+      <span className="hidden md:inline" style={{ color: "#CBD5E1", fontSize: 12 }}>/</span>
+      <span className="hidden md:inline" style={{ color: "#64748B", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>o/acme-corp</span>
 
       <div className="flex-1" />
 
       {/* Search */}
-      <div ref={searchRef} style={{ position: "relative" }}>
+      <div ref={searchRef} className="hidden md:block" style={{ position: "relative" }}>
         <div
           className="flex items-center gap-2 rounded"
           style={{
@@ -224,8 +235,8 @@ export function TopBar({ active, onNavigate, onAction }: TopBarProps) {
         >
           <div className="rounded-full flex items-center justify-center text-white"
             style={{ width: 22, height: 22, background: "#2563EB", fontSize: 10, fontWeight: 600 }}>RN</div>
-          <span style={{ fontSize: 12, fontWeight: 500, color: "#0F172A" }}>Ryan</span>
-          <ChevronDown size={12} color="#94A3B8" style={{ transform: userOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+          <span className="hidden sm:inline" style={{ fontSize: 12, fontWeight: 500, color: "#0F172A" }}>Ryan</span>
+          <ChevronDown size={12} color="#94A3B8" className="hidden sm:inline" style={{ transform: userOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
         </button>
 
         {userOpen && (
@@ -273,7 +284,7 @@ export function TopBar({ active, onNavigate, onAction }: TopBarProps) {
           className="flex items-center gap-1.5 rounded"
           style={{ background: "#2563EB", color: "#FFFFFF", fontSize: 12, fontWeight: 500, padding: "7px 14px", border: "none", cursor: "pointer", whiteSpace: "nowrap" }}
         >
-          <Plus size={13} />{action}
+          <Plus size={13} /><span className="hidden sm:inline">{action}</span>
         </button>
       )}
     </header>

@@ -69,7 +69,7 @@ export function SegmentsView() {
           </div>
         </div>
 
-        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
           {[
             { label: "Matching Contacts", value: selectedSegment.count.toLocaleString() },
             { label: "Rules", value: `${selectedSegment.rules.length} conditions` },
@@ -108,7 +108,7 @@ export function SegmentsView() {
             <span style={{ fontSize: 12, fontWeight: 500, color: "#0F172A" }}>Member Preview</span>
             <span style={{ fontSize: 11, color: "#64748B" }}>First 20 shown</span>
           </div>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <div className="overflow-x-auto"><table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "#F8FAFC", borderBottom: "1px solid var(--border)" }}>
                 {["Name / Email", "Lifetime Spend", "Last Order"].map((h) => (
@@ -141,7 +141,7 @@ export function SegmentsView() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       </div>
     );
@@ -168,7 +168,7 @@ export function SegmentsView() {
         </div>
       </div>
 
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+      <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
         {filtered.map((s) => {
           const sc = statusConfig[s.status];
           return (
@@ -338,7 +338,7 @@ function SegmentBuilder({ onBack }: { onBack: () => void }) {
 
           {previewOpen && (
             <div className="rounded-xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <div className="overflow-x-auto"><table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: "#F8FAFC", borderBottom: "1px solid var(--border)" }}>
                     {["Name / Email", "Lifetime Spend", "Last Order"].map((h) => (
@@ -368,7 +368,7 @@ function SegmentBuilder({ onBack }: { onBack: () => void }) {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             </div>
           )}
         </div>

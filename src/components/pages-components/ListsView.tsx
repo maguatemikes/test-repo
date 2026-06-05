@@ -89,7 +89,7 @@ export function ListsView({ onBack }: ListsViewProps) {
           </div>
         </div>
 
-        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
           {[
             { label: "Total Members", value: selectedList.members.toLocaleString() },
             { label: "Source", value: selectedList.source },
@@ -107,7 +107,7 @@ export function ListsView({ onBack }: ListsViewProps) {
             <span style={{ fontSize: 12, fontWeight: 500, color: "#0F172A" }}>Members</span>
             <span style={{ fontSize: 11, color: "#64748B", fontFamily: "JetBrains Mono, monospace" }}>{members.length} shown of {selectedList.members.toLocaleString()}</span>
           </div>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <div className="overflow-x-auto"><table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "#F8FAFC", borderBottom: "1px solid var(--border)" }}>
                 {["Name / Email", "Joined", "Source", ""].map((h) => (
@@ -155,7 +155,7 @@ export function ListsView({ onBack }: ListsViewProps) {
                 </tr>
               )}
             </tbody>
-          </table>
+          </table></div>
         </div>
       </div>
     );
@@ -188,7 +188,7 @@ export function ListsView({ onBack }: ListsViewProps) {
       </div>
 
       <div className="rounded-lg overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div className="overflow-x-auto"><table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#F8FAFC", borderBottom: "1px solid var(--border)" }}>
               {["List Name", "Members", "Source", "Created", "Last Updated", ""].map((h) => (
@@ -239,7 +239,7 @@ export function ListsView({ onBack }: ListsViewProps) {
               );
             })}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </div>
   );

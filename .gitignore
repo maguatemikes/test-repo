@@ -44,3 +44,6 @@ drizzle/
 
 # Vercel
 .vercel
+
+insert-test.mjs
+.revert-point.txt

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
@@ -15,16 +16,32 @@ import {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  // Close the mobile drawer whenever the route changes.
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
+
+  // Public, embeddable routes (hosted forms) render standalone — no dashboard chrome.
+  const isStandalone = pathname?.startsWith("/f/") ?? false;
+  if (isStandalone) {
+    return <>{children}</>;
+  }
 
   const active = pathToSection(pathname);
   const customerSubTab =
     active === "customers" ? pathToCustomerSubTab(pathname) : undefined;
 
-  const handleNavigate = (section: NavSection) =>
+  const handleNavigate = (section: NavSection) => {
+    setMobileNavOpen(false);
     router.push(sectionToPath(section));
+  };
 
-  const handleNavigateCustomer = (sub: CustomerSubTab) =>
+  const handleNavigateCustomer = (sub: CustomerSubTab) => {
+    setMobileNavOpen(false);
     router.push(customerSubTabToPath(sub));
+  };
 
   const handleTopBarAction = () => {
     if (active === "dashboard" || active === "campaigns") router.push("/campaigns");
@@ -46,10 +63,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         customerSubTab={customerSubTab}
         onNavigate={handleNavigate}
         onNavigateCustomer={handleNavigateCustomer}
+        mobileOpen={mobileNavOpen}
+        onClose={() => setMobileNavOpen(false)}
       />
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <TopBar active={active} onNavigate={handleNavigate} onAction={handleTopBarAction} />
+        <TopBar
+          active={active}
+          onNavigate={handleNavigate}
+          onAction={handleTopBarAction}
+          onMenuClick={() => setMobileNavOpen(true)}
+        />
 
         <main
           className={isFullHeight ? "flex-1 overflow-hidden" : "flex-1 overflow-y-auto"}
