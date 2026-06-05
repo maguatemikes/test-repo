@@ -1,3 +1,45 @@
-git add .gitlab-ci.yml
-git commit -m "Update pipeline for staging deploys"
-git push
+# CI/CD pipeline for the CRM web app.
+# Runs on the self-hosted GitLab Runner on the app server (163.245.212.5).
+# No external container registry — the runner builds and deploys on the same machine.
+
+stages:
+  - test
+  - deploy
+
+cache:
+  key:
+    files:
+      - pnpm-lock.yaml
+  paths:
+    - .pnpm-store/
+    - node_modules/
+
+install-and-test:
+  image: node:20-alpine
+  stage: test
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@9.12.1 --activate
+    - pnpm config set store-dir .pnpm-store
+  script:
+    - pnpm install --frozen-lockfile || pnpm install
+    - pnpm typecheck
+
+deploy-staging:
+  stage: deploy
+  image: docker:24
+  tags:
+    - vps
+  needs: ["install-and-test"]
+  script:
+    - echo "Building Docker image..."
+    - docker build -t crm-web-staging:latest .
+    - echo "Stopping old container if running..."
+    - docker stop crm-web-staging 2>/dev/null || true
+    - docker rm crm-web-staging 2>/dev/null || true
+    - echo "Starting new container..."
+    - docker run -d --name crm-web-staging --restart=unless-stopped -p 127.0.0.1:3050:3000 --env-file /opt/crm-staging/.env crm-web-staging:latest
+    - echo "Cleaning up unused images..."
+    - docker image prune -f
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev-branch"
