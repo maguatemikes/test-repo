@@ -1,0 +1,23 @@
+# Production docker-compose. Lives at /opt/crm/docker-compose.yml on the app server.
+# Pulls images from the GitLab container registry.
+# The .env file (mode 600) sits next to this file and holds secrets.
+
+services:
+  crm-web:
+    image: ${REGISTRY}/crm-web:latest
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - crm-net
+
+  # Future:
+  # crm-api: (.NET API container)
+  # redis: (cache + rate limits)
+
+  # Reverse proxy is handled by nginx on the host (not in compose).
+
+networks:
+  crm-net:
+    driver: bridge

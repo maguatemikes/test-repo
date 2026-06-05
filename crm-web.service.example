@@ -1,0 +1,32 @@
+# systemd unit alternative to docker-compose, if you prefer running Node directly.
+# Place at /etc/systemd/system/crm-web.service then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now crm-web
+
+[Unit]
+Description=CRM web app (Next.js)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=crm
+Group=crm
+WorkingDirectory=/opt/crm-web
+EnvironmentFile=/opt/crm-web/.env
+ExecStart=/usr/bin/node /opt/crm-web/server.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=crm-web
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/crm-web
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
