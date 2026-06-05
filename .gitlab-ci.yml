@@ -33,7 +33,15 @@ deploy-staging:
     - docker stop crm-web-staging 2>/dev/null || true
     - docker rm crm-web-staging 2>/dev/null || true
     - echo "Starting new container..."
-    - docker run -d --name crm-web-staging --restart=unless-stopped -p 127.0.0.1:3050:3000 --env-file /opt/crm-staging/.env crm-web-staging:latest
+    # Inject DATABASE_URL from a GitLab CI/CD variable when present (overrides the
+    # env-file). Keeps the secret out of the repo and the server file.
+    - |
+      EXTRA_ENV=""
+      if [ -n "$DATABASE_URL" ]; then EXTRA_ENV="-e DATABASE_URL=$DATABASE_URL"; fi
+      docker run -d --name crm-web-staging --restart=unless-stopped \
+        -p 127.0.0.1:3050:3000 \
+        --env-file /opt/crm-staging/.env $EXTRA_ENV \
+        crm-web-staging:latest
     - echo "Cleaning up unused images..."
     - docker image prune -f
   rules:
