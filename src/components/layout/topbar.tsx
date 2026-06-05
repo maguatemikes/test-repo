@@ -1,6 +1,6 @@
 "use client";
 
-import { UserButton } from "@clerk/nextjs";
+// import { UserButton } from "@clerk/nextjs"; // ← Re-enable when Clerk keys are set
 import { Bell, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -17,7 +17,12 @@ export function Topbar() {
           <span className="absolute -top-1 -right-1 w-2 h-2 bg-accent rounded-full" />
         </button>
         <div className="w-px h-6 bg-border" />
-        <UserButton afterSignOutUrl="/sign-in" />
+
+        {/* Clerk UserButton placeholder while running without real Clerk keys.
+            Replace with <UserButton afterSignOutUrl="/sign-in" /> once Clerk is configured. */}
+        <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold">
+          R
+        </div>
       </div>
     </header>
   );
