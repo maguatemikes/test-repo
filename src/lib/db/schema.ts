@@ -3,7 +3,7 @@
  *
  * Conventions:
  *   - All money columns use DECIMAL(12,2).
- *   - All timestamps are MySQL DATETIME (not TIMESTAMP — avoids 2038 + timezone surprises).
+ *   - All timestamps are MySQL DATETIME (not TIMESTAMP Ã¢â‚¬â€ avoids 2038 + timezone surprises).
  *   - Every tenant-scoped table carries `organization_id` and indexes start with it.
  *   - JSON columns are used for: segment rules, automation step config, form fields,
  *     marketplace content, webhook event lists.
@@ -26,7 +26,7 @@ import { sql } from "drizzle-orm";
 // 1. Tenancy & auth
 // ============================================================
 
-export const plans = mysqlTable("plans", {
+export const plans = mysqlTable("crm_plans", {
   id:                   bigint("id", { mode: "number" }).autoincrement().primaryKey(),
   slug:                 varchar("slug", { length: 32 }).notNull().unique(),
   name:                 varchar("name", { length: 100 }).notNull(),
@@ -38,7 +38,7 @@ export const plans = mysqlTable("plans", {
   createdAt:            datetime("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const organizations = mysqlTable("organizations", {
+export const organizations = mysqlTable("crm_organizations", {
   id:                   bigint("id", { mode: "number" }).autoincrement().primaryKey(),
   slug:                 varchar("slug", { length: 64 }).notNull().unique(),
   name:                 varchar("name", { length: 200 }).notNull(),
@@ -52,7 +52,7 @@ export const organizations = mysqlTable("organizations", {
   updatedAt:            datetime("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const users = mysqlTable("users", {
+export const users = mysqlTable("crm_users", {
   id:                   bigint("id", { mode: "number" }).autoincrement().primaryKey(),
   clerkUserId:          varchar("clerk_user_id", { length: 64 }).notNull().unique(),
   email:                varchar("email", { length: 255 }).notNull().unique(),
@@ -62,8 +62,7 @@ export const users = mysqlTable("users", {
   createdAt:            datetime("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const organizationMembers = mysqlTable(
-  "organization_members",
+export const organizationMembers = mysqlTable("crm_organization_members",
   {
     orgId:      bigint("organization_id", { mode: "number" }).notNull().references(() => organizations.id),
     userId:     bigint("user_id", { mode: "number" }).notNull().references(() => users.id),
@@ -74,8 +73,7 @@ export const organizationMembers = mysqlTable(
   t => ({ pk: primaryKey({ columns: [t.orgId, t.userId] }) })
 );
 
-export const apiKeys = mysqlTable(
-  "api_keys",
+export const apiKeys = mysqlTable("crm_api_keys",
   {
     id:           bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:        bigint("organization_id", { mode: "number" }).notNull(),
@@ -90,8 +88,7 @@ export const apiKeys = mysqlTable(
   t => ({ ixOrg: index("ix_api_keys_org").on(t.orgId) })
 );
 
-export const usageMeters = mysqlTable(
-  "usage_meters",
+export const usageMeters = mysqlTable("crm_usage_meters",
   {
     id:          bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:       bigint("organization_id", { mode: "number" }).notNull(),
@@ -107,8 +104,7 @@ export const usageMeters = mysqlTable(
 // 2. Customers
 // ============================================================
 
-export const customers = mysqlTable(
-  "customers",
+export const customers = mysqlTable("crm_customers",
   {
     id:                  bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:               bigint("organization_id", { mode: "number" }).notNull(),
@@ -153,8 +149,7 @@ export const customers = mysqlTable(
   })
 );
 
-export const customerTags = mysqlTable(
-  "customer_tags",
+export const customerTags = mysqlTable("crm_customer_tags",
   {
     id:         bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:      bigint("organization_id", { mode: "number" }).notNull(),
@@ -165,8 +160,7 @@ export const customerTags = mysqlTable(
   t => ({ uqOrgName: uniqueIndex("uq_customer_tags_org_name").on(t.orgId, t.name) })
 );
 
-export const customerTagLinks = mysqlTable(
-  "customer_tag_links",
+export const customerTagLinks = mysqlTable("crm_customer_tag_links",
   {
     customerId: bigint("customer_id", { mode: "number" }).notNull().references(() => customers.id),
     tagId:      bigint("tag_id", { mode: "number" }).notNull().references(() => customerTags.id),
@@ -178,8 +172,7 @@ export const customerTagLinks = mysqlTable(
   })
 );
 
-export const customerAddresses = mysqlTable(
-  "customer_addresses",
+export const customerAddresses = mysqlTable("crm_customer_addresses",
   {
     id:          bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     customerId:  bigint("customer_id", { mode: "number" }).notNull().references(() => customers.id),
@@ -196,8 +189,7 @@ export const customerAddresses = mysqlTable(
   t => ({ ixCustomer: index("ix_customer_addresses_customer").on(t.customerId) })
 );
 
-export const customerAliases = mysqlTable(
-  "customer_aliases",
+export const customerAliases = mysqlTable("crm_customer_aliases",
   {
     orgId:           bigint("organization_id", { mode: "number" }).notNull(),
     aliasEmail:      varchar("alias_email", { length: 255 }).notNull(),
@@ -215,8 +207,7 @@ export const customerAliases = mysqlTable(
 // 3. Audience (lists + segments)
 // ============================================================
 
-export const lists = mysqlTable(
-  "lists",
+export const lists = mysqlTable("crm_lists",
   {
     id:          bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:       bigint("organization_id", { mode: "number" }).notNull(),
@@ -231,8 +222,7 @@ export const lists = mysqlTable(
   t => ({ ixOrg: index("ix_lists_org").on(t.orgId, t.archived) })
 );
 
-export const listMembers = mysqlTable(
-  "list_members",
+export const listMembers = mysqlTable("crm_list_members",
   {
     listId:     bigint("list_id", { mode: "number" }).notNull().references(() => lists.id),
     customerId: bigint("customer_id", { mode: "number" }).notNull().references(() => customers.id),
@@ -244,8 +234,7 @@ export const listMembers = mysqlTable(
   })
 );
 
-export const segments = mysqlTable(
-  "segments",
+export const segments = mysqlTable("crm_segments",
   {
     id:                     bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:                  bigint("organization_id", { mode: "number" }).notNull(),
@@ -270,8 +259,7 @@ export const segments = mysqlTable(
 );
 
 /** Materialized membership for fast send-time lookups. Refreshed by segment engine. */
-export const segmentMembers = mysqlTable(
-  "segment_members",
+export const segmentMembers = mysqlTable("crm_segment_members",
   {
     segmentId:  bigint("segment_id", { mode: "number" }).notNull().references(() => segments.id),
     customerId: bigint("customer_id", { mode: "number" }).notNull().references(() => customers.id),
@@ -287,8 +275,7 @@ export const segmentMembers = mysqlTable(
 // 4. Email infrastructure
 // ============================================================
 
-export const sendingDomains = mysqlTable(
-  "sending_domains",
+export const sendingDomains = mysqlTable("crm_sending_domains",
   {
     id:              bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:           bigint("organization_id", { mode: "number" }).notNull(),
@@ -303,8 +290,7 @@ export const sendingDomains = mysqlTable(
   t => ({ uqOrgDomain: uniqueIndex("uq_sending_domains_org_domain").on(t.orgId, t.domain) })
 );
 
-export const senders = mysqlTable(
-  "senders",
+export const senders = mysqlTable("crm_senders",
   {
     id:               bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:            bigint("organization_id", { mode: "number" }).notNull(),
@@ -318,8 +304,7 @@ export const senders = mysqlTable(
   t => ({ ixOrg: index("ix_senders_org").on(t.orgId) })
 );
 
-export const templates = mysqlTable(
-  "templates",
+export const templates = mysqlTable("crm_templates",
   {
     id:             bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:          bigint("organization_id", { mode: "number" }).notNull(),
@@ -339,8 +324,7 @@ export const templates = mysqlTable(
   t => ({ ixOrg: index("ix_templates_org").on(t.orgId, t.archived) })
 );
 
-export const suppressions = mysqlTable(
-  "suppressions",
+export const suppressions = mysqlTable("crm_suppressions",
   {
     id:           bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:        bigint("organization_id", { mode: "number" }).notNull(),
@@ -356,8 +340,7 @@ export const suppressions = mysqlTable(
 // 5. Campaigns + sending
 // ============================================================
 
-export const campaigns = mysqlTable(
-  "campaigns",
+export const campaigns = mysqlTable("crm_campaigns",
   {
     id:                   bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:                bigint("organization_id", { mode: "number" }).notNull(),
@@ -378,7 +361,7 @@ export const campaigns = mysqlTable(
     scheduledAt:          datetime("scheduled_at"),
     sentAt:               datetime("sent_at"),
 
-    /** Materialized counters — updated as email events arrive. */
+    /** Materialized counters Ã¢â‚¬â€ updated as email events arrive. */
     recipientsCount:      int("recipients_count").notNull().default(0),
     deliveredCount:       int("delivered_count").notNull().default(0),
     openedCount:          int("opened_count").notNull().default(0),
@@ -399,8 +382,7 @@ export const campaigns = mysqlTable(
 );
 
 /** Per-recipient send record. One row per (campaign, customer). */
-export const emails = mysqlTable(
-  "emails",
+export const emails = mysqlTable("crm_emails",
   {
     id:               bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:            bigint("organization_id", { mode: "number" }).notNull(),
@@ -428,15 +410,14 @@ export const emails = mysqlTable(
 );
 
 /** Granular event log for emails. One row per open/click/bounce/etc. */
-export const emailEvents = mysqlTable(
-  "email_events",
+export const emailEvents = mysqlTable("crm_email_events",
   {
     id:           bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:        bigint("organization_id", { mode: "number" }).notNull(),
     emailId:      bigint("email_id", { mode: "number" }).notNull().references(() => emails.id),
     type:         mysqlEnum("type", ["sent", "delivered", "open", "click", "bounce", "complaint", "unsubscribe"]).notNull(),
     occurredAt:   datetime("occurred_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-    /** type=click → url, type=bounce → bounce_reason, type=complaint → feedback_loop_arf, etc. */
+    /** type=click Ã¢â€ â€™ url, type=bounce Ã¢â€ â€™ bounce_reason, type=complaint Ã¢â€ â€™ feedback_loop_arf, etc. */
     metadataJson: json("metadata_json"),
     ipAddress:    varchar("ip_address", { length: 64 }),
     userAgent:    varchar("user_agent", { length: 500 }),
@@ -451,8 +432,7 @@ export const emailEvents = mysqlTable(
 // 6. Automations
 // ============================================================
 
-export const automations = mysqlTable(
-  "automations",
+export const automations = mysqlTable("crm_automations",
   {
     id:                bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:             bigint("organization_id", { mode: "number" }).notNull(),
@@ -464,7 +444,7 @@ export const automations = mysqlTable(
     ]).notNull(),
     triggerConfigJson: json("trigger_config_json"),
     status:            mysqlEnum("status", ["draft", "active", "paused", "archived"]).notNull().default("draft"),
-    /** "once" — customer enrolls once ever. "always" — re-enrolls on every trigger. "after_completion" — re-enrolls after exit. */
+    /** "once" Ã¢â‚¬â€ customer enrolls once ever. "always" Ã¢â‚¬â€ re-enrolls on every trigger. "after_completion" Ã¢â‚¬â€ re-enrolls after exit. */
     reentryPolicy:     mysqlEnum("reentry_policy", ["once", "always", "after_completion"]).notNull().default("once"),
 
     enrolledCount:     int("enrolled_count").notNull().default(0),
@@ -478,8 +458,7 @@ export const automations = mysqlTable(
   t => ({ ixOrgStatus: index("ix_automations_org_status").on(t.orgId, t.status) })
 );
 
-export const automationSteps = mysqlTable(
-  "automation_steps",
+export const automationSteps = mysqlTable("crm_automation_steps",
   {
     id:           bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     automationId: bigint("automation_id", { mode: "number" }).notNull().references(() => automations.id),
@@ -494,8 +473,7 @@ export const automationSteps = mysqlTable(
   t => ({ ixAutomation: index("ix_automation_steps_automation").on(t.automationId) })
 );
 
-export const automationRuns = mysqlTable(
-  "automation_runs",
+export const automationRuns = mysqlTable("crm_automation_runs",
   {
     id:              bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:           bigint("organization_id", { mode: "number" }).notNull(),
@@ -520,8 +498,7 @@ export const automationRuns = mysqlTable(
 // 7. Forms
 // ============================================================
 
-export const forms = mysqlTable(
-  "forms",
+export const forms = mysqlTable("crm_forms",
   {
     id:                  bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:               bigint("organization_id", { mode: "number" }).notNull(),
@@ -545,8 +522,7 @@ export const forms = mysqlTable(
   })
 );
 
-export const formSubmissions = mysqlTable(
-  "form_submissions",
+export const formSubmissions = mysqlTable("crm_form_submissions",
   {
     id:           bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:        bigint("organization_id", { mode: "number" }).notNull(),
@@ -565,8 +541,7 @@ export const formSubmissions = mysqlTable(
 // 8. Integrations + webhooks + audit
 // ============================================================
 
-export const integrations = mysqlTable(
-  "integrations",
+export const integrations = mysqlTable("crm_integrations",
   {
     id:                   bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:                bigint("organization_id", { mode: "number" }).notNull(),
@@ -586,8 +561,7 @@ export const integrations = mysqlTable(
   t => ({ ixOrgType: index("ix_integrations_org_type").on(t.orgId, t.type) })
 );
 
-export const webhooks = mysqlTable(
-  "webhooks",
+export const webhooks = mysqlTable("crm_webhooks",
   {
     id:                   bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:                bigint("organization_id", { mode: "number" }).notNull(),
@@ -602,8 +576,7 @@ export const webhooks = mysqlTable(
   t => ({ ixOrg: index("ix_webhooks_org").on(t.orgId, t.status) })
 );
 
-export const auditLogs = mysqlTable(
-  "audit_logs",
+export const auditLogs = mysqlTable("crm_audit_logs",
   {
     id:           bigint("id", { mode: "number" }).autoincrement().primaryKey(),
     orgId:        bigint("organization_id", { mode: "number" }).notNull(),
