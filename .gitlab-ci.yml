@@ -37,4 +37,4 @@ deploy-staging:
     - echo "Cleaning up unused images..."
     - docker image prune -f
   rules:
-    - if: $CI_COMMIT_BRANCH == "dev-branch" || $CI_COMMIT_BRANCH == "feat/adopt-mike-ui"
+    - if: $CI_COMMIT_BRANCH == "staging"
