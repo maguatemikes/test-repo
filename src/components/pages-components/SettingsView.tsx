@@ -53,7 +53,7 @@ export function SettingsView() {
   };
 
   return (
-    <div className="flex h-full" style={{ fontFamily: font, position: "relative" }}>
+    <div className="flex flex-col md:flex-row h-full overflow-y-auto md:overflow-hidden" style={{ fontFamily: font, position: "relative" }}>
       {saveToast && (
         <div style={{
           position: "fixed", bottom: 24, right: 24, background: "#0F172A", color: "#FFFFFF",
@@ -66,8 +66,8 @@ export function SettingsView() {
       )}
       {/* Settings nav */}
       <div
-        className="py-5 px-3"
-        style={{ width: 200, background: "#FFFFFF", borderRight: "1px solid var(--border)", flexShrink: 0 }}
+        className="py-5 px-3 w-full md:w-[200px] md:shrink-0"
+        style={{ background: "#FFFFFF", borderBottom: "1px solid var(--border)" }}
       >
         <p style={{ fontSize: 10, fontWeight: 600, color: "#64748B", letterSpacing: "0.06em", padding: "0 8px 8px" }}>SETTINGS</p>
         {settingsTabs.map((tab) => {

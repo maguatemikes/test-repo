@@ -60,7 +60,7 @@ export function AutomationsView() {
         </div>
       </div>
 
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+      <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
         {automations.map((a) => {
           const sc = statusConfig[a.status];
           return (

@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, Send, Zap, FileText, BarChart2, Settings,
-  ChevronRight, ChevronDown, Mail, LogOut, HelpCircle
+  ChevronRight, ChevronDown, Mail, LogOut, HelpCircle, X
 } from "lucide-react";
 import { useState } from "react";
 import type { CustomerSubTab, NavSection } from "./navigation-types";
@@ -10,6 +10,10 @@ interface SidebarProps {
   customerSubTab?: CustomerSubTab;
   onNavigate: (section: NavSection) => void;
   onNavigateCustomer: (sub: CustomerSubTab) => void;
+  /** Whether the off-canvas drawer is open on mobile. */
+  mobileOpen?: boolean;
+  /** Close the mobile drawer. */
+  onClose?: () => void;
 }
 
 const navItems = [
@@ -28,20 +32,34 @@ const navItems = [
   { id: "analytics"   as NavSection, label: "Analytics",   icon: BarChart2 },
 ];
 
-export function Sidebar({ active, customerSubTab, onNavigate, onNavigateCustomer }: SidebarProps) {
+export function Sidebar({ active, customerSubTab, onNavigate, onNavigateCustomer, mobileOpen = false, onClose }: SidebarProps) {
   const [expandedCustomers, setExpandedCustomers] = useState(true);
 
   return (
-    <aside
-      className="flex flex-col h-full"
-      style={{
-        background: "var(--sidebar)",
-        borderRight: "1px solid var(--sidebar-border)",
-        width: 220,
-        minWidth: 220,
-        fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif",
-      }}
-    >
+    <>
+      {/* Backdrop (mobile only) */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={
+          "flex flex-col h-full fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-out " +
+          "md:static md:z-auto md:translate-x-0 " +
+          (mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0")
+        }
+        style={{
+          background: "var(--sidebar)",
+          borderRight: "1px solid var(--sidebar-border)",
+          width: 220,
+          minWidth: 220,
+          fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif",
+        }}
+      >
       {/* Logo */}
       <div
         className="flex items-center gap-2.5 px-5"
@@ -56,6 +74,15 @@ export function Sidebar({ active, customerSubTab, onNavigate, onNavigateCustomer
         <span style={{ color: "#F8FAFC", fontWeight: 600, fontSize: 14, letterSpacing: "-0.01em" }}>
           NetX CRM
         </span>
+        {/* Close button (mobile only) */}
+        <button
+          onClick={onClose}
+          className="ml-auto flex items-center justify-center rounded md:hidden"
+          style={{ width: 28, height: 28, color: "#94A3B8" }}
+          aria-label="Close menu"
+        >
+          <X size={16} />
+        </button>
       </div>
 
       {/* Org badge */}
@@ -230,6 +257,7 @@ export function Sidebar({ active, customerSubTab, onNavigate, onNavigateCustomer
           <LogOut size={13} color="#475569" />
         </div>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

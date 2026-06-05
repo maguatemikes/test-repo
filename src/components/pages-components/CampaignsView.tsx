@@ -34,7 +34,7 @@ function SendTestDialog({ onClose }: { onClose: () => void }) {
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.35)", zIndex: 200 }} />
       <div style={{
         position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
-        width: 400, background: "#FFFFFF", borderRadius: 12, padding: 24,
+        width: "min(400px, calc(100vw - 32px))", background: "#FFFFFF", borderRadius: 12, padding: 24,
         border: "1px solid var(--border)", boxShadow: "0 16px 48px rgba(15,23,42,0.16)",
         zIndex: 201, fontFamily: font,
       }}>
@@ -156,7 +156,7 @@ function CampaignDetail({ campaign, onBack }: { campaign: Campaign; onBack: () =
 
       {/* Stats row */}
       {isSent && (
-        <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${stats.length}, 1fr)` }}>
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
           {stats.map((s) => {
             const SIcon = s.icon;
             return (
@@ -176,7 +176,7 @@ function CampaignDetail({ campaign, onBack }: { campaign: Campaign; onBack: () =
 
       {/* Link clicks + timeline */}
       {isSent && (
-        <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
           <div className="rounded-xl p-5" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
             <p style={{ fontSize: 12, fontWeight: 600, color: "#0F172A", marginBottom: 12 }}>Top Link Clicks</p>
             <div className="space-y-3">
@@ -288,7 +288,7 @@ export function CampaignsView() {
 
       {/* Table */}
       <div className="rounded-lg overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div className="overflow-x-auto"><table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#F8FAFC", borderBottom: "1px solid var(--border)" }}>
               {["Campaign", "Type", "Status", "Recipients", "Opens", "Clicks", "Unsubs", "Revenue", "Sent / Scheduled", ""].map((h) => (
@@ -353,7 +353,7 @@ export function CampaignsView() {
               );
             })}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </div>
   );
@@ -404,7 +404,7 @@ function ComposerWizard({ step, onStep, onBack }: { step: number; onStep: (s: nu
         })}
       </div>
 
-      <div className="grid gap-6" style={{ gridTemplateColumns: "1fr 300px" }}>
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-[1fr_300px]">
         <div className="rounded-xl p-6 space-y-5" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
           {step === 1 && (
             <>

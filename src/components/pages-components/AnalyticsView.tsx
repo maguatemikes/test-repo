@@ -411,7 +411,7 @@ export function AnalyticsView() {
       </div>
 
       {/* KPI row */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         {summaryKpis.map((k) => (
           <div key={k.label} className="rounded-lg p-4" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
             <div className="flex items-center justify-between mb-2">
@@ -429,7 +429,7 @@ export function AnalyticsView() {
 
       {activeTab === "Email Performance" && (
         <div className="space-y-4">
-          <div className="grid gap-4" style={{ gridTemplateColumns: "2fr 1fr" }}>
+          <div className="grid gap-4 grid-cols-1 lg:grid-cols-[2fr_1fr]">
             <div className="rounded-lg p-5" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
               <h3 style={{ fontSize: 13, fontWeight: 600, color: "#0F172A", marginBottom: 4 }}>Send Volume & Engagement</h3>
               <p style={{ fontSize: 11, color: "#64748B", marginBottom: 12 }}>Monthly sends, opens, and clicks</p>
@@ -483,7 +483,7 @@ export function AnalyticsView() {
       )}
 
       {activeTab === "Customer Insights" && (
-        <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
           <div className="rounded-lg p-5" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
             <h3 style={{ fontSize: 13, fontWeight: 600, color: "#0F172A", marginBottom: 4 }}>New vs Returning</h3>
             <p style={{ fontSize: 11, color: "#64748B", marginBottom: 12 }}>Monthly customer cohorts</p>
@@ -525,7 +525,7 @@ export function AnalyticsView() {
       )}
 
       {activeTab === "Ecommerce" && (
-        <div className="grid gap-4" style={{ gridTemplateColumns: "2fr 1fr" }}>
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-[2fr_1fr]">
           <div className="rounded-lg p-5" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
             <h3 style={{ fontSize: 13, fontWeight: 600, color: "#0F172A", marginBottom: 4 }}>Revenue Over Time</h3>
             <p style={{ fontSize: 11, color: "#64748B", marginBottom: 12 }}>Attributed email revenue by month</p>

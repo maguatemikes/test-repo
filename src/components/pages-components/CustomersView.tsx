@@ -115,7 +115,7 @@ function CustomerDrawer({ customer, onClose }: { customer: typeof customers[0]; 
       {/* Drawer */}
       <div
         style={{
-          position: "fixed", top: 0, right: 0, bottom: 0, width: 420,
+          position: "fixed", top: 0, right: 0, bottom: 0, width: "min(420px, 100vw)",
           background: "#FFFFFF", borderLeft: "1px solid var(--border)",
           boxShadow: "-8px 0 32px rgba(15,23,42,0.12)", zIndex: 101,
           display: "flex", flexDirection: "column", fontFamily: font,
@@ -470,7 +470,7 @@ export function CustomersView({ initialTab = "customers", onSubTabChange }: Cust
 
       {/* Table */}
       <div className="rounded-lg overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div className="overflow-x-auto"><table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#F8FAFC", borderBottom: "1px solid var(--border)" }}>
               <th style={{ padding: "9px 14px", width: 40 }}>
@@ -553,7 +553,7 @@ export function CustomersView({ initialTab = "customers", onSubTabChange }: Cust
               );
             })}
           </tbody>
-        </table>
+        </table></div>
 
         {/* Pagination */}
         <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: "1px solid var(--border)" }}>

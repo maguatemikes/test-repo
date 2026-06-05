@@ -48,7 +48,7 @@ export function FormsView() {
       </div>
 
       {/* Summary KPIs */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         {[
           { label: "Total Impressions", value: "119,050", icon: Eye, color: "#2563EB" },
           { label: "Total Submissions", value: "5,300", icon: Users, color: "#16A34A" },
@@ -70,7 +70,7 @@ export function FormsView() {
 
       {/* Forms list */}
       <div className="rounded-lg overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div className="overflow-x-auto"><table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#F8FAFC", borderBottom: "1px solid var(--border)" }}>
               {["Form Name", "Type", "Status", "Impressions", "Submissions", "Conv. Rate", "Linked List", "Updated", ""].map((h) => (
@@ -131,7 +131,7 @@ export function FormsView() {
               );
             })}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </div>
   );

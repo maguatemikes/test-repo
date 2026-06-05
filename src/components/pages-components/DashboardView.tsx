@@ -220,9 +220,9 @@ interface DashboardViewProps { onNavigate: (s: any) => void; }
 
 export function DashboardView({ onNavigate }: DashboardViewProps) {
   return (
-    <div className="p-6 space-y-6" style={{ fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif" }}>
+    <div className="p-4 md:p-6 space-y-6" style={{ fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif" }}>
       {/* KPIs */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
         {kpis.map((k) => {
           const Icon = k.icon;
           return (
@@ -263,7 +263,7 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
       </div>
 
       {/* Chart + Active automations */}
-      <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 340px" }}>
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-[1fr_340px]">
         {/* Email performance chart */}
         <div
           className="rounded-lg p-5"
@@ -364,7 +364,8 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
           <h3 style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>Recent Campaigns</h3>
           <button onClick={() => onNavigate("campaigns")} style={{ fontSize: 11, color: "#2563EB", cursor: "pointer" }}>View all campaigns →</button>
         </div>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div className="overflow-x-auto">
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
           <thead>
             <tr style={{ background: "#F8FAFC" }}>
               {["Campaign", "Status", "Recipients", "Open Rate", "Click Rate", "Revenue", "Sent"].map((h) => (
@@ -426,6 +427,7 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
             })}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
