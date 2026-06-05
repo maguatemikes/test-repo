@@ -6,9 +6,8 @@
 -- Coordinates:   Run AFTER 0001 (creates the tables) and 0002 (retrofits NetX).
 --
 -- What this seeds:
---   - The 4 plan tiers (Free, Starter, Growth, Enterprise)
---   - The internal organization (id = 1) — this is YOUR primary store
---   - A default sending domain placeholder (operator must verify)
+--   - The 4 plan tiers (Free, Starter, Growth, Enterprise) into crm_plans
+--   - The internal organization (id = 1) into crm_organizations
 -- ==========================================================================
 
 SET NAMES utf8mb4;
@@ -16,7 +15,7 @@ SET NAMES utf8mb4;
 -- --------------------------------------------------------------------------
 -- 1. Plans
 -- --------------------------------------------------------------------------
-INSERT INTO plans (slug, name, contacts_limit, sends_per_month_limit, price_monthly_usd, features_json, active)
+INSERT INTO crm_plans (slug, name, contacts_limit, sends_per_month_limit, price_monthly_usd, features_json, active)
 VALUES
   ('free',
    'Free',
@@ -75,28 +74,27 @@ ON DUPLICATE KEY UPDATE
 -- 2. The internal organization (id = 1)
 -- --------------------------------------------------------------------------
 -- We pin id = 1 explicitly so the org_id retrofit in 0002 aligns with this row.
--- Adjust name and slug to your branding.
 
-INSERT INTO organizations (
+INSERT INTO crm_organizations (
   id, slug, name, plan_id, status, billing_email, trial_ends_at
 )
 SELECT 1, 'internal', 'Internal Store',
-       (SELECT id FROM plans WHERE slug = 'enterprise'),
+       (SELECT id FROM crm_plans WHERE slug = 'enterprise'),
        'active', NULL, NULL
-WHERE NOT EXISTS (SELECT 1 FROM organizations WHERE id = 1);
+WHERE NOT EXISTS (SELECT 1 FROM crm_organizations WHERE id = 1);
 
 -- If the row exists but plan_id is null, link it to enterprise.
-UPDATE organizations
-   SET plan_id = (SELECT id FROM plans WHERE slug = 'enterprise')
+UPDATE crm_organizations
+   SET plan_id = (SELECT id FROM crm_plans WHERE slug = 'enterprise')
  WHERE id = 1 AND plan_id IS NULL;
 
 -- --------------------------------------------------------------------------
 -- 3. Verification
 -- --------------------------------------------------------------------------
 SELECT id, slug, name, status, plan_id, created_at
-  FROM organizations
+  FROM crm_organizations
  WHERE id = 1;
 
 SELECT slug, name, contacts_limit, sends_per_month_limit, price_monthly_usd, active
-  FROM plans
+  FROM crm_plans
  ORDER BY price_monthly_usd;

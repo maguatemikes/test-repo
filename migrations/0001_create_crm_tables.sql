@@ -1,6 +1,8 @@
 -- ==========================================================================
 -- CRM Phase 1 — Create new tables
 -- ==========================================================================
+-- All tables prefixed with crm_ to keep them separate from NetX's netx_ tables.
+--
 -- Apply with:    mysql -h <host> -u <user> -p omnc < 0001_create_crm_tables.sql
 -- Idempotent:    Yes (CREATE TABLE IF NOT EXISTS throughout)
 -- Coordinates:   None — these are new tables, no impact on NetX
@@ -13,7 +15,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- 1. Tenancy & auth
 -- --------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS plans (
+CREATE TABLE IF NOT EXISTS crm_plans (
   id                      BIGINT          NOT NULL AUTO_INCREMENT,
   slug                    VARCHAR(32)     NOT NULL,
   name                    VARCHAR(100)    NOT NULL,
@@ -24,10 +26,10 @@ CREATE TABLE IF NOT EXISTS plans (
   active                  TINYINT(1)      NOT NULL DEFAULT 1,
   created_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_plans_slug (slug)
+  UNIQUE KEY uq_crm_plans_slug (slug)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS organizations (
+CREATE TABLE IF NOT EXISTS crm_organizations (
   id                      BIGINT          NOT NULL AUTO_INCREMENT,
   slug                    VARCHAR(64)     NOT NULL,
   name                    VARCHAR(200)    NOT NULL,
@@ -40,12 +42,12 @@ CREATE TABLE IF NOT EXISTS organizations (
   created_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_organizations_slug (slug),
-  KEY ix_organizations_plan (plan_id),
-  CONSTRAINT fk_organizations_plan FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE SET NULL
+  UNIQUE KEY uq_crm_organizations_slug (slug),
+  KEY ix_crm_organizations_plan (plan_id),
+  CONSTRAINT fk_crm_organizations_plan FOREIGN KEY (plan_id) REFERENCES crm_plans(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE IF NOT EXISTS crm_users (
   id                      BIGINT          NOT NULL AUTO_INCREMENT,
   clerk_user_id           VARCHAR(64)     NOT NULL,
   email                   VARCHAR(255)    NOT NULL,
@@ -54,24 +56,24 @@ CREATE TABLE IF NOT EXISTS users (
   last_login_at           DATETIME        NULL,
   created_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_users_clerk (clerk_user_id),
-  UNIQUE KEY uq_users_email (email)
+  UNIQUE KEY uq_crm_users_clerk (clerk_user_id),
+  UNIQUE KEY uq_crm_users_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS organization_members (
+CREATE TABLE IF NOT EXISTS crm_organization_members (
   organization_id         BIGINT          NOT NULL,
   user_id                 BIGINT          NOT NULL,
   role                    ENUM('super_admin','admin','marketing_manager','analyst','read_only') NOT NULL,
   invited_by              BIGINT          NULL,
   joined_at               DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (organization_id, user_id),
-  KEY ix_org_members_user (user_id),
-  CONSTRAINT fk_org_members_org  FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
-  CONSTRAINT fk_org_members_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  CONSTRAINT fk_org_members_inv  FOREIGN KEY (invited_by) REFERENCES users(id) ON DELETE SET NULL
+  KEY ix_crm_org_members_user (user_id),
+  CONSTRAINT fk_crm_org_members_org  FOREIGN KEY (organization_id) REFERENCES crm_organizations(id) ON DELETE CASCADE,
+  CONSTRAINT fk_crm_org_members_user FOREIGN KEY (user_id) REFERENCES crm_users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_crm_org_members_inv  FOREIGN KEY (invited_by) REFERENCES crm_users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS api_keys (
+CREATE TABLE IF NOT EXISTS crm_api_keys (
   id                      BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id         BIGINT          NOT NULL,
   key_prefix              VARCHAR(12)     NOT NULL COMMENT 'First 8 chars of the key for UI display',
@@ -82,10 +84,10 @@ CREATE TABLE IF NOT EXISTS api_keys (
   revoked_at              DATETIME        NULL,
   created_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY ix_api_keys_org (organization_id)
+  KEY ix_crm_api_keys_org (organization_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS usage_meters (
+CREATE TABLE IF NOT EXISTS crm_usage_meters (
   id                      BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id         BIGINT          NOT NULL,
   period_month            VARCHAR(7)      NOT NULL COMMENT 'YYYY-MM',
@@ -93,14 +95,14 @@ CREATE TABLE IF NOT EXISTS usage_meters (
   value                   INT             NOT NULL DEFAULT 0,
   updated_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_usage_org_period_metric (organization_id, period_month, metric)
+  UNIQUE KEY uq_crm_usage_org_period_metric (organization_id, period_month, metric)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------------------------
 -- 2. Customers
 -- --------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS customers (
+CREATE TABLE IF NOT EXISTS crm_customers (
   id                      BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id         BIGINT          NOT NULL,
   email                   VARCHAR(255)    NOT NULL,
@@ -128,34 +130,34 @@ CREATE TABLE IF NOT EXISTS customers (
   created_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_customers_org_email (organization_id, email),
-  KEY ix_customers_org_vip (organization_id, is_vip),
-  KEY ix_customers_org_subscribed (organization_id, is_subscribed),
-  KEY ix_customers_org_last_order (organization_id, last_order_at),
-  KEY ix_customers_org_last_eng (organization_id, last_engagement_at)
+  UNIQUE KEY uq_crm_customers_org_email (organization_id, email),
+  KEY ix_crm_customers_org_vip (organization_id, is_vip),
+  KEY ix_crm_customers_org_subscribed (organization_id, is_subscribed),
+  KEY ix_crm_customers_org_last_order (organization_id, last_order_at),
+  KEY ix_crm_customers_org_last_eng (organization_id, last_engagement_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS customer_tags (
+CREATE TABLE IF NOT EXISTS crm_customer_tags (
   id                      BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id         BIGINT          NOT NULL,
   name                    VARCHAR(64)     NOT NULL COMMENT 'Normalized: lowercase, dashed',
   color                   VARCHAR(16)     NULL,
   created_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_customer_tags_org_name (organization_id, name)
+  UNIQUE KEY uq_crm_customer_tags_org_name (organization_id, name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS customer_tag_links (
+CREATE TABLE IF NOT EXISTS crm_customer_tag_links (
   customer_id             BIGINT          NOT NULL,
   tag_id                  BIGINT          NOT NULL,
   added_at                DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (customer_id, tag_id),
-  KEY ix_customer_tag_links_tag (tag_id),
-  CONSTRAINT fk_ctl_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
-  CONSTRAINT fk_ctl_tag      FOREIGN KEY (tag_id) REFERENCES customer_tags(id) ON DELETE CASCADE
+  KEY ix_crm_customer_tag_links_tag (tag_id),
+  CONSTRAINT fk_crm_ctl_customer FOREIGN KEY (customer_id) REFERENCES crm_customers(id) ON DELETE CASCADE,
+  CONSTRAINT fk_crm_ctl_tag      FOREIGN KEY (tag_id) REFERENCES crm_customer_tags(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS customer_addresses (
+CREATE TABLE IF NOT EXISTS crm_customer_addresses (
   id                      BIGINT          NOT NULL AUTO_INCREMENT,
   customer_id             BIGINT          NOT NULL,
   kind                    ENUM('shipping','billing','other') NOT NULL DEFAULT 'shipping',
@@ -168,25 +170,25 @@ CREATE TABLE IF NOT EXISTS customer_addresses (
   country                 VARCHAR(2)      NULL COMMENT 'ISO 3166-1 alpha-2',
   created_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY ix_customer_addresses_customer (customer_id),
-  CONSTRAINT fk_ca_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+  KEY ix_crm_customer_addresses_customer (customer_id),
+  CONSTRAINT fk_crm_ca_customer FOREIGN KEY (customer_id) REFERENCES crm_customers(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS customer_aliases (
+CREATE TABLE IF NOT EXISTS crm_customer_aliases (
   organization_id         BIGINT          NOT NULL,
   alias_email             VARCHAR(255)    NOT NULL,
   canonical_email         VARCHAR(255)    NOT NULL,
   merged_at               DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   merged_by               BIGINT          NULL,
   PRIMARY KEY (organization_id, alias_email),
-  KEY ix_customer_aliases_canonical (organization_id, canonical_email)
+  KEY ix_crm_customer_aliases_canonical (organization_id, canonical_email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------------------------
 -- 3. Audience (lists + segments)
 -- --------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS lists (
+CREATE TABLE IF NOT EXISTS crm_lists (
   id                      BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id         BIGINT          NOT NULL,
   name                    VARCHAR(200)    NOT NULL,
@@ -197,20 +199,20 @@ CREATE TABLE IF NOT EXISTS lists (
   created_by              BIGINT          NULL,
   created_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY ix_lists_org (organization_id, archived)
+  KEY ix_crm_lists_org (organization_id, archived)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS list_members (
+CREATE TABLE IF NOT EXISTS crm_list_members (
   list_id                 BIGINT          NOT NULL,
   customer_id             BIGINT          NOT NULL,
   added_at                DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (list_id, customer_id),
-  KEY ix_list_members_customer (customer_id),
-  CONSTRAINT fk_lm_list     FOREIGN KEY (list_id) REFERENCES lists(id) ON DELETE CASCADE,
-  CONSTRAINT fk_lm_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+  KEY ix_crm_list_members_customer (customer_id),
+  CONSTRAINT fk_crm_lm_list     FOREIGN KEY (list_id) REFERENCES crm_lists(id) ON DELETE CASCADE,
+  CONSTRAINT fk_crm_lm_customer FOREIGN KEY (customer_id) REFERENCES crm_customers(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS segments (
+CREATE TABLE IF NOT EXISTS crm_segments (
   id                          BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id             BIGINT          NOT NULL,
   name                        VARCHAR(200)    NOT NULL,
@@ -224,24 +226,24 @@ CREATE TABLE IF NOT EXISTS segments (
   created_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY ix_segments_org (organization_id, archived)
+  KEY ix_crm_segments_org (organization_id, archived)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS segment_members (
+CREATE TABLE IF NOT EXISTS crm_segment_members (
   segment_id              BIGINT          NOT NULL,
   customer_id             BIGINT          NOT NULL,
   added_at                DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (segment_id, customer_id),
-  KEY ix_segment_members_customer (customer_id),
-  CONSTRAINT fk_sm_segment  FOREIGN KEY (segment_id) REFERENCES segments(id) ON DELETE CASCADE,
-  CONSTRAINT fk_sm_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+  KEY ix_crm_segment_members_customer (customer_id),
+  CONSTRAINT fk_crm_sm_segment  FOREIGN KEY (segment_id) REFERENCES crm_segments(id) ON DELETE CASCADE,
+  CONSTRAINT fk_crm_sm_customer FOREIGN KEY (customer_id) REFERENCES crm_customers(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------------------------
 -- 4. Email infrastructure
 -- --------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS sending_domains (
+CREATE TABLE IF NOT EXISTS crm_sending_domains (
   id                      BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id         BIGINT          NOT NULL,
   domain                  VARCHAR(255)    NOT NULL,
@@ -252,10 +254,10 @@ CREATE TABLE IF NOT EXISTS sending_domains (
   last_checked_at         DATETIME        NULL,
   created_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_sending_domains_org_domain (organization_id, domain)
+  UNIQUE KEY uq_crm_sending_domains_org_domain (organization_id, domain)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS senders (
+CREATE TABLE IF NOT EXISTS crm_senders (
   id                      BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id         BIGINT          NOT NULL,
   sending_domain_id       BIGINT          NULL,
@@ -265,11 +267,11 @@ CREATE TABLE IF NOT EXISTS senders (
   is_default              TINYINT(1)      NOT NULL DEFAULT 0,
   created_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY ix_senders_org (organization_id),
-  CONSTRAINT fk_senders_domain FOREIGN KEY (sending_domain_id) REFERENCES sending_domains(id) ON DELETE SET NULL
+  KEY ix_crm_senders_org (organization_id),
+  CONSTRAINT fk_crm_senders_domain FOREIGN KEY (sending_domain_id) REFERENCES crm_sending_domains(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS templates (
+CREATE TABLE IF NOT EXISTS crm_templates (
   id                      BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id         BIGINT          NOT NULL,
   name                    VARCHAR(200)    NOT NULL,
@@ -282,10 +284,10 @@ CREATE TABLE IF NOT EXISTS templates (
   created_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY ix_templates_org (organization_id, archived)
+  KEY ix_crm_templates_org (organization_id, archived)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS suppressions (
+CREATE TABLE IF NOT EXISTS crm_suppressions (
   id                      BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id         BIGINT          NOT NULL,
   email                   VARCHAR(255)    NOT NULL,
@@ -293,14 +295,14 @@ CREATE TABLE IF NOT EXISTS suppressions (
   source                  VARCHAR(100)    NULL,
   suppressed_at           DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_suppressions_org_email (organization_id, email)
+  UNIQUE KEY uq_crm_suppressions_org_email (organization_id, email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------------------------
 -- 5. Campaigns + sending
 -- --------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS campaigns (
+CREATE TABLE IF NOT EXISTS crm_campaigns (
   id                          BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id             BIGINT          NOT NULL,
   type                        ENUM('regular','automation','transactional') NOT NULL DEFAULT 'regular',
@@ -327,16 +329,16 @@ CREATE TABLE IF NOT EXISTS campaigns (
   created_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY ix_campaigns_org_status (organization_id, status),
-  KEY ix_campaigns_org_sent_at (organization_id, sent_at),
-  CONSTRAINT fk_campaigns_sender   FOREIGN KEY (sender_id) REFERENCES senders(id) ON DELETE SET NULL,
-  CONSTRAINT fk_campaigns_template FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE SET NULL,
-  CONSTRAINT fk_campaigns_list     FOREIGN KEY (audience_list_id) REFERENCES lists(id) ON DELETE SET NULL,
-  CONSTRAINT fk_campaigns_segment  FOREIGN KEY (audience_segment_id) REFERENCES segments(id) ON DELETE SET NULL,
-  CONSTRAINT fk_campaigns_exclude  FOREIGN KEY (exclude_segment_id) REFERENCES segments(id) ON DELETE SET NULL
+  KEY ix_crm_campaigns_org_status (organization_id, status),
+  KEY ix_crm_campaigns_org_sent_at (organization_id, sent_at),
+  CONSTRAINT fk_crm_campaigns_sender   FOREIGN KEY (sender_id) REFERENCES crm_senders(id) ON DELETE SET NULL,
+  CONSTRAINT fk_crm_campaigns_template FOREIGN KEY (template_id) REFERENCES crm_templates(id) ON DELETE SET NULL,
+  CONSTRAINT fk_crm_campaigns_list     FOREIGN KEY (audience_list_id) REFERENCES crm_lists(id) ON DELETE SET NULL,
+  CONSTRAINT fk_crm_campaigns_segment  FOREIGN KEY (audience_segment_id) REFERENCES crm_segments(id) ON DELETE SET NULL,
+  CONSTRAINT fk_crm_campaigns_exclude  FOREIGN KEY (exclude_segment_id) REFERENCES crm_segments(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS emails (
+CREATE TABLE IF NOT EXISTS crm_emails (
   id                      BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id         BIGINT          NOT NULL,
   campaign_id             BIGINT          NOT NULL,
@@ -352,15 +354,15 @@ CREATE TABLE IF NOT EXISTS emails (
   open_count              INT             NOT NULL DEFAULT 0,
   click_count             INT             NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_emails_campaign_customer (campaign_id, customer_id),
-  KEY ix_emails_campaign (campaign_id),
-  KEY ix_emails_customer (customer_id),
-  KEY ix_emails_org_status (organization_id, status),
-  CONSTRAINT fk_emails_campaign FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
-  CONSTRAINT fk_emails_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+  UNIQUE KEY uq_crm_emails_campaign_customer (campaign_id, customer_id),
+  KEY ix_crm_emails_campaign (campaign_id),
+  KEY ix_crm_emails_customer (customer_id),
+  KEY ix_crm_emails_org_status (organization_id, status),
+  CONSTRAINT fk_crm_emails_campaign FOREIGN KEY (campaign_id) REFERENCES crm_campaigns(id) ON DELETE CASCADE,
+  CONSTRAINT fk_crm_emails_customer FOREIGN KEY (customer_id) REFERENCES crm_customers(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS email_events (
+CREATE TABLE IF NOT EXISTS crm_email_events (
   id                      BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id         BIGINT          NOT NULL,
   email_id                BIGINT          NOT NULL,
@@ -370,16 +372,16 @@ CREATE TABLE IF NOT EXISTS email_events (
   ip_address              VARCHAR(64)     NULL,
   user_agent              VARCHAR(500)    NULL,
   PRIMARY KEY (id),
-  KEY ix_email_events_email (email_id, type),
-  KEY ix_email_events_org_type (organization_id, type, occurred_at),
-  CONSTRAINT fk_email_events_email FOREIGN KEY (email_id) REFERENCES emails(id) ON DELETE CASCADE
+  KEY ix_crm_email_events_email (email_id, type),
+  KEY ix_crm_email_events_org_type (organization_id, type, occurred_at),
+  CONSTRAINT fk_crm_email_events_email FOREIGN KEY (email_id) REFERENCES crm_emails(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------------------------
 -- 6. Automations
 -- --------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS automations (
+CREATE TABLE IF NOT EXISTS crm_automations (
   id                          BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id             BIGINT          NOT NULL,
   name                        VARCHAR(200)    NOT NULL,
@@ -395,10 +397,10 @@ CREATE TABLE IF NOT EXISTS automations (
   created_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY ix_automations_org_status (organization_id, status)
+  KEY ix_crm_automations_org_status (organization_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS automation_steps (
+CREATE TABLE IF NOT EXISTS crm_automation_steps (
   id                          BIGINT          NOT NULL AUTO_INCREMENT,
   automation_id               BIGINT          NOT NULL,
   parent_step_id              BIGINT          NULL,
@@ -407,11 +409,11 @@ CREATE TABLE IF NOT EXISTS automation_steps (
   type                        ENUM('action','delay','condition','end') NOT NULL,
   config_json                 JSON            NOT NULL,
   PRIMARY KEY (id),
-  KEY ix_automation_steps_automation (automation_id),
-  CONSTRAINT fk_as_automation FOREIGN KEY (automation_id) REFERENCES automations(id) ON DELETE CASCADE
+  KEY ix_crm_automation_steps_automation (automation_id),
+  CONSTRAINT fk_crm_as_automation FOREIGN KEY (automation_id) REFERENCES crm_automations(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS automation_runs (
+CREATE TABLE IF NOT EXISTS crm_automation_runs (
   id                          BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id             BIGINT          NOT NULL,
   automation_id               BIGINT          NOT NULL,
@@ -424,18 +426,18 @@ CREATE TABLE IF NOT EXISTS automation_runs (
   completed_at                DATETIME        NULL,
   exit_reason                 VARCHAR(100)    NULL,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_runs_auto_cust_active (automation_id, customer_id, status),
-  KEY ix_runs_waiting (status, waiting_until),
-  CONSTRAINT fk_runs_auto FOREIGN KEY (automation_id) REFERENCES automations(id) ON DELETE CASCADE,
-  CONSTRAINT fk_runs_cust FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
-  CONSTRAINT fk_runs_step FOREIGN KEY (current_step_id) REFERENCES automation_steps(id) ON DELETE SET NULL
+  UNIQUE KEY uq_crm_runs_auto_cust_active (automation_id, customer_id, status),
+  KEY ix_crm_runs_waiting (status, waiting_until),
+  CONSTRAINT fk_crm_runs_auto FOREIGN KEY (automation_id) REFERENCES crm_automations(id) ON DELETE CASCADE,
+  CONSTRAINT fk_crm_runs_cust FOREIGN KEY (customer_id) REFERENCES crm_customers(id) ON DELETE CASCADE,
+  CONSTRAINT fk_crm_runs_step FOREIGN KEY (current_step_id) REFERENCES crm_automation_steps(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------------------------
 -- 7. Forms
 -- --------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS forms (
+CREATE TABLE IF NOT EXISTS crm_forms (
   id                          BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id             BIGINT          NOT NULL,
   slug                        VARCHAR(64)     NOT NULL COMMENT 'Public hosted URL slug',
@@ -452,12 +454,12 @@ CREATE TABLE IF NOT EXISTS forms (
   created_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_forms_org_slug (organization_id, slug),
-  KEY ix_forms_org_status (organization_id, status),
-  CONSTRAINT fk_forms_list FOREIGN KEY (target_list_id) REFERENCES lists(id) ON DELETE SET NULL
+  UNIQUE KEY uq_crm_forms_org_slug (organization_id, slug),
+  KEY ix_crm_forms_org_status (organization_id, status),
+  CONSTRAINT fk_crm_forms_list FOREIGN KEY (target_list_id) REFERENCES crm_lists(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS form_submissions (
+CREATE TABLE IF NOT EXISTS crm_form_submissions (
   id                      BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id         BIGINT          NOT NULL,
   form_id                 BIGINT          NOT NULL,
@@ -468,16 +470,16 @@ CREATE TABLE IF NOT EXISTS form_submissions (
   user_agent              VARCHAR(500)    NULL,
   submitted_at            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY ix_form_submissions_form (form_id, submitted_at),
-  CONSTRAINT fk_fs_form     FOREIGN KEY (form_id) REFERENCES forms(id) ON DELETE CASCADE,
-  CONSTRAINT fk_fs_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
+  KEY ix_crm_form_submissions_form (form_id, submitted_at),
+  CONSTRAINT fk_crm_fs_form     FOREIGN KEY (form_id) REFERENCES crm_forms(id) ON DELETE CASCADE,
+  CONSTRAINT fk_crm_fs_customer FOREIGN KEY (customer_id) REFERENCES crm_customers(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------------------------
 -- 8. Integrations + webhooks + audit
 -- --------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS integrations (
+CREATE TABLE IF NOT EXISTS crm_integrations (
   id                          BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id             BIGINT          NOT NULL,
   type                        ENUM('shopify','woocommerce','bigcommerce','amazon','ebay','veeqo','stripe','sendgrid','resend','ses','twilio') NOT NULL,
@@ -489,10 +491,10 @@ CREATE TABLE IF NOT EXISTS integrations (
   last_error_message          VARCHAR(500)    NULL,
   created_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY ix_integrations_org_type (organization_id, type)
+  KEY ix_crm_integrations_org_type (organization_id, type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS webhooks (
+CREATE TABLE IF NOT EXISTS crm_webhooks (
   id                          BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id             BIGINT          NOT NULL,
   url                         VARCHAR(500)    NOT NULL,
@@ -503,10 +505,10 @@ CREATE TABLE IF NOT EXISTS webhooks (
   failure_count               INT             NOT NULL DEFAULT 0,
   created_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY ix_webhooks_org (organization_id, status)
+  KEY ix_crm_webhooks_org (organization_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS audit_logs (
+CREATE TABLE IF NOT EXISTS crm_audit_logs (
   id                          BIGINT          NOT NULL AUTO_INCREMENT,
   organization_id             BIGINT          NOT NULL,
   user_id                     BIGINT          NULL,
@@ -517,7 +519,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   ip_address                  VARCHAR(64)     NULL,
   occurred_at                 DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY ix_audit_logs_org_time (organization_id, occurred_at)
+  KEY ix_crm_audit_logs_org_time (organization_id, occurred_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ==========================================================================
@@ -526,14 +528,5 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 SELECT TABLE_NAME, TABLE_ROWS
   FROM INFORMATION_SCHEMA.TABLES
  WHERE TABLE_SCHEMA = DATABASE()
-   AND TABLE_NAME IN (
-     'plans','organizations','users','organization_members','api_keys','usage_meters',
-     'customers','customer_tags','customer_tag_links','customer_addresses','customer_aliases',
-     'lists','list_members','segments','segment_members',
-     'sending_domains','senders','templates','suppressions',
-     'campaigns','emails','email_events',
-     'automations','automation_steps','automation_runs',
-     'forms','form_submissions',
-     'integrations','webhooks','audit_logs'
-   )
+   AND TABLE_NAME LIKE 'crm_%'
  ORDER BY TABLE_NAME;
