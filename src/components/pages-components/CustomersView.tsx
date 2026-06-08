@@ -85,9 +85,22 @@ function avatarColor(id: string) {
 function CustomerDrawer({ customer, onClose }: { customer: typeof mockCustomers[0]; onClose: () => void }) {
   const [drawerTab, setDrawerTab] = useState<DrawerTab>("overview");
   const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
-  const orders = drawerOrders[customer.id] || [];
+  const [orders, setOrders] = useState<{ id: number; orderNumber: string; total: number; status: string; date: string | null; itemCount: number; channel: string | null }[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  useEffect(() => {
+    let active = true;
+    setOrdersLoading(true);
+    fetch(`/api/customers/orders?email=${encodeURIComponent(customer.email)}`)
+      .then((r) => r.json())
+      .then((d) => { if (active) setOrders(d.orders || []); })
+      .catch(() => { if (active) setOrders([]); })
+      .finally(() => { if (active) setOrdersLoading(false); });
+    return () => { active = false; };
+  }, [customer.email]);
   const activity = drawerActivity[customer.id] || drawerActivity.default;
   const initials = customer.name.split(" ").map((n) => n[0]).join("");
+  const fmtMoney = (n: number) => `$${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—");
 
   const drawerTabs: { id: DrawerTab; label: string; icon: any }[] = [
     { id: "overview", label: "Overview", icon: Activity },
@@ -214,10 +227,10 @@ function CustomerDrawer({ customer, onClose }: { customer: typeof mockCustomers[
                       <div key={o.id} className="flex items-center justify-between rounded-lg p-3"
                         style={{ background: "#F8FAFC", border: "1px solid var(--border)" }}>
                         <div>
-                          <p style={{ fontSize: 12, fontWeight: 500, color: "#0F172A" }}>{o.product}</p>
-                          <p style={{ fontSize: 11, color: "#64748B" }}>{o.id} · {o.date}</p>
+                          <p style={{ fontSize: 12, fontWeight: 500, color: "#0F172A" }}>Order #{o.orderNumber}</p>
+                          <p style={{ fontSize: 11, color: "#64748B" }}>{o.channel ? `${o.channel} · ` : ""}{fmtDate(o.date)}</p>
                         </div>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: "#0F172A", fontFamily: "JetBrains Mono, monospace" }}>{o.amount}</span>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "#0F172A", fontFamily: "JetBrains Mono, monospace" }}>{fmtMoney(o.total)}</span>
                       </div>
                     ))}
                   </div>
@@ -232,7 +245,9 @@ function CustomerDrawer({ customer, onClose }: { customer: typeof mockCustomers[
 
           {drawerTab === "orders" && (
             <div>
-              {orders.length === 0 ? (
+              {ordersLoading ? (
+                <div className="text-center py-12"><p style={{ fontSize: 13, color: "#94A3B8" }}>Loading orders…</p></div>
+              ) : orders.length === 0 ? (
                 <div className="text-center py-12">
                   <ShoppingBag size={28} color="#CBD5E1" className="mx-auto mb-3" />
                   <p style={{ fontSize: 13, color: "#64748B" }}>No orders found</p>
@@ -242,12 +257,13 @@ function CustomerDrawer({ customer, onClose }: { customer: typeof mockCustomers[
                   {orders.map((o) => (
                     <div key={o.id} className="rounded-lg p-4" style={{ border: "1px solid var(--border)", background: "#FAFAFA" }}>
                       <div className="flex items-start justify-between mb-1">
-                        <p style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>{o.product}</p>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: "#0F172A", fontFamily: "JetBrains Mono, monospace" }}>{o.amount}</span>
+                        <p style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>Order #{o.orderNumber}</p>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#0F172A", fontFamily: "JetBrains Mono, monospace" }}>{fmtMoney(o.total)}</span>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span style={{ fontSize: 11, color: "#64748B" }}>{o.id}</span>
-                        <span style={{ fontSize: 11, color: "#64748B" }}>{o.date}</span>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span style={{ fontSize: 11, color: "#64748B" }}>{o.itemCount} item{o.itemCount === 1 ? "" : "s"}</span>
+                        <span style={{ fontSize: 11, color: "#64748B" }}>{fmtDate(o.date)}</span>
+                        {o.channel && <span style={{ fontSize: 11, color: "#64748B" }}>{o.channel}</span>}
                         <span className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, background: "#F0FDF4", color: "#15803D" }}>
                           {o.status}
                         </span>
