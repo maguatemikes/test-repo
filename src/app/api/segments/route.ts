@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   PRESET_SEGMENTS, getPreset, countByRule, sampleByRule,
-  listSegments, getSegmentById, ruleToDisplay, type RuleGroup,
+  listSegments, getSegmentById, createSegment, ruleToDisplay, type RuleGroup,
 } from "@/server/repositories/segments";
 
 // TODO: derive org from auth once wired.
@@ -72,7 +72,6 @@ export async function POST(req: Request) {
     if (body.save) {
       const name = String(body.name || "").trim();
       if (!name) return NextResponse.json({ ok: false, error: "A segment name is required" }, { status: 400 });
-      const { createSegment } = await import("@/server/repositories/segments");
       const id = await createSegment(ORG_ID, name, rule);
       return NextResponse.json({ ok: true, id }, { status: 201 });
     }
