@@ -1,26 +1,31 @@
-import { eq, desc } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { customers as customersTable } from "@/lib/db/schema";
+import { searchCustomers } from "@/server/repositories/customers";
 import { CustomersClient } from "@/components/pages-components/CustomersClient";
 
-// Always read fresh from the database (no static caching).
+// TODO: derive org from auth once wired.
+const ORG_ID = 1;
+const PAGE_SIZE = 100;
+
 export const dynamic = "force-dynamic";
 
 const fmt = (d: Date | string | null) =>
   d ? new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
 
-export default async function CustomersPage() {
+export default async function CustomersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; page?: string }>;
+}) {
+  const sp = await searchParams;
+  const q = (sp.q ?? "").trim();
+  const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+
   let dbCustomers: React.ComponentProps<typeof CustomersClient>["dbCustomers"] = [];
+  let total = 0;
 
   try {
-    const rows = await db
-      .select()
-      .from(customersTable)
-      .where(eq(customersTable.orgId, 1))
-      .orderBy(desc(customersTable.createdAt))
-      .limit(200);
-
-    dbCustomers = rows.map((r) => ({
+    const res = await searchCustomers(ORG_ID, { q, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE });
+    total = res.total;
+    dbCustomers = res.rows.map((r) => ({
       id: String(r.id),
       name: r.displayName || [r.firstName, r.lastName].filter(Boolean).join(" ") || r.email,
       email: r.email,
@@ -38,5 +43,13 @@ export default async function CustomersPage() {
     console.error("[customers] DB fetch failed:", err);
   }
 
-  return <CustomersClient dbCustomers={dbCustomers} />;
+  return (
+    <CustomersClient
+      dbCustomers={dbCustomers}
+      total={total}
+      page={page}
+      pageSize={PAGE_SIZE}
+      query={q}
+    />
+  );
 }

@@ -3,7 +3,7 @@
  * Reusable CRUD — call from server components, server actions, route handlers.
  * Do NOT import into client components.
  */
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, like, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { customers } from "@/lib/db/schema";
 
@@ -17,6 +17,34 @@ export function getCustomers(orgId: number, limit = 200) {
     .where(eq(customers.orgId, orgId))
     .orderBy(desc(customers.createdAt))
     .limit(limit);
+}
+
+/** Server-side search + pagination. Returns the page of rows and the total match count. */
+export async function searchCustomers(
+  orgId: number,
+  opts: { q?: string; limit?: number; offset?: number } = {},
+): Promise<{ rows: Customer[]; total: number }> {
+  const { q = "", limit = 100, offset = 0 } = opts;
+  const term = `%${q}%`;
+  const where = q
+    ? and(
+        eq(customers.orgId, orgId),
+        or(
+          like(customers.email, term),
+          like(customers.displayName, term),
+          like(customers.firstName, term),
+          like(customers.lastName, term),
+          like(customers.company, term),
+        ),
+      )
+    : eq(customers.orgId, orgId);
+
+  const [rows, totalRes] = await Promise.all([
+    db.select().from(customers).where(where).orderBy(desc(customers.createdAt)).limit(limit).offset(offset),
+    db.select({ total: count() }).from(customers).where(where),
+  ]);
+
+  return { rows, total: Number(totalRes[0]?.total ?? 0) };
 }
 
 export async function getCustomerById(id: number): Promise<Customer | null> {

@@ -317,15 +317,24 @@ function CustomerDrawer({ customer, onClose }: { customer: typeof mockCustomers[
 interface CustomersViewProps {
   initialTab?: SubTab;
   onSubTabChange?: (tab: SubTab) => void;
-  /** Real customers loaded from the database (prepended to the table). */
+  /** Current page of customers from the DB (already searched + paginated server-side). */
   dbCustomers?: typeof mockCustomers;
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  serverQuery?: string;
+  onSearch?: (q: string) => void;
+  onPage?: (p: number) => void;
 }
 
-export function CustomersView({ initialTab = "customers", onSubTabChange, dbCustomers }: CustomersViewProps) {
-  // Real DB rows first, then the demo data below them.
-  const customers = [...(dbCustomers ?? []), ...mockCustomers];
+export function CustomersView({
+  initialTab = "customers", onSubTabChange, dbCustomers,
+  total = 0, page = 1, pageSize = 100, serverQuery = "", onSearch, onPage,
+}: CustomersViewProps) {
+  // Server-driven list (search + pagination happen in the DB).
+  const customers = dbCustomers ?? [];
   const [subTab, setSubTab] = useState<SubTab>(initialTab);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(serverQuery);
   const [activeChip, setActiveChip] = useState("all");
   const [selected, setSelected] = useState<string[]>([]);
   const [drawerCustomer, setDrawerCustomer] = useState<typeof mockCustomers[0] | null>(null);
@@ -334,6 +343,13 @@ export function CustomersView({ initialTab = "customers", onSubTabChange, dbCust
   // Sync when sidebar drives a tab change externally
   useEffect(() => { setSubTab(initialTab); }, [initialTab]);
 
+  // Realtime search: debounce typing, then push the query to the server (URL).
+  useEffect(() => {
+    if (query === serverQuery) return;
+    const t = setTimeout(() => onSearch?.(query.trim()), 350);
+    return () => clearTimeout(t);
+  }, [query, serverQuery, onSearch]);
+
   const handleSubTab = (tab: SubTab) => {
     setSubTab(tab);
     onSubTabChange?.(tab);
@@ -341,14 +357,8 @@ export function CustomersView({ initialTab = "customers", onSubTabChange, dbCust
 
   const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
 
-  const filtered = customers.filter((c) => {
-    const matchQuery =
-      !query ||
-      c.name.toLowerCase().includes(query.toLowerCase()) ||
-      c.email.toLowerCase().includes(query.toLowerCase());
-    const matchChip = activeChip === "all" || c.tags.includes(activeChip);
-    return matchQuery && matchChip;
-  });
+  // Search is server-side now; only the tag chip filters the current page.
+  const filtered = customers.filter((c) => activeChip === "all" || c.tags.includes(activeChip));
 
   const toggleSelect = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -467,8 +477,12 @@ export function CustomersView({ initialTab = "customers", onSubTabChange, dbCust
 
       <div className="flex items-center gap-4">
         <span style={{ fontSize: 12, color: "#64748B" }}>
-          Showing <strong style={{ color: "#0F172A", fontWeight: 600 }}>{filtered.length}</strong> of{" "}
-          <strong style={{ color: "#0F172A", fontWeight: 600 }}>48,291</strong> customers
+          {total > 0 ? (
+            <>Showing <strong style={{ color: "#0F172A", fontWeight: 600 }}>{(page - 1) * pageSize + 1}–{(page - 1) * pageSize + filtered.length}</strong> of{" "}
+            <strong style={{ color: "#0F172A", fontWeight: 600 }}>{total.toLocaleString()}</strong> customers{serverQuery ? ` matching “${serverQuery}”` : ""}</>
+          ) : (
+            <>No customers found{serverQuery ? ` for “${serverQuery}”` : ""}.</>
+          )}
         </span>
       </div>
 
@@ -559,24 +573,36 @@ export function CustomersView({ initialTab = "customers", onSubTabChange, dbCust
           </tbody>
         </table></div>
 
-        {/* Pagination */}
-        <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: "1px solid var(--border)" }}>
-          <span style={{ fontSize: 11, color: "#64748B", fontFamily: font }}>Page 1 of 4,830</span>
-          <div className="flex gap-1">
-            {["←", "1", "2", "3", "…", "4830", "→"].map((p, idx) => (
-              <button key={`${p}-${idx}`} className="rounded"
-                style={{
-                  fontSize: 11, padding: "3px 8px",
-                  background: p === "1" ? "#0F172A" : "#F8FAFC",
-                  color: p === "1" ? "#FFFFFF" : "#64748B",
-                  border: "1px solid var(--border)",
-                  fontFamily: font,
-                }}>
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* Pagination (server-side) */}
+        {(() => {
+          const totalPages = Math.max(1, Math.ceil(total / pageSize));
+          return (
+            <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: "1px solid var(--border)" }}>
+              <span style={{ fontSize: 11, color: "#64748B", fontFamily: font }}>
+                Page {page} of {totalPages.toLocaleString()}
+              </span>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => page > 1 && onPage?.(page - 1)}
+                  disabled={page <= 1}
+                  className="rounded"
+                  style={{ fontSize: 11, padding: "3px 10px", background: "#F8FAFC", color: page <= 1 ? "#CBD5E1" : "#64748B", border: "1px solid var(--border)", fontFamily: font, cursor: page <= 1 ? "default" : "pointer" }}
+                >
+                  ← Prev
+                </button>
+                <span style={{ fontSize: 11, padding: "3px 10px", background: "#0F172A", color: "#FFFFFF", borderRadius: 4, fontFamily: font }}>{page}</span>
+                <button
+                  onClick={() => page < totalPages && onPage?.(page + 1)}
+                  disabled={page >= totalPages}
+                  className="rounded"
+                  style={{ fontSize: 11, padding: "3px 10px", background: "#F8FAFC", color: page >= totalPages ? "#CBD5E1" : "#64748B", border: "1px solid var(--border)", fontFamily: font, cursor: page >= totalPages ? "default" : "pointer" }}
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
