@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import {
-  PRESET_SEGMENTS, getPreset, countByRule, sampleByRule,
+  getPreset, countByRule, sampleByRule,
   listSegments, getSegmentById, createSegment, ruleToDisplay, type RuleGroup,
 } from "@/server/repositories/segments";
 
@@ -40,12 +40,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: true, members: toMembers(await sampleByRule(ORG_ID, rule, 20)) });
     }
 
-    const presets = await Promise.all(
-      PRESET_SEGMENTS.map(async (s) => ({
-        id: s.id, name: s.name, rules: s.rules,
-        count: await countByRule(ORG_ID, s.def), status: "ready" as const, preset: true,
-      })),
-    );
+    // Segments are DB-backed now (definitions in crm_segments), evaluated live.
     const storedRows = await listSegments(ORG_ID);
     const stored = await Promise.all(
       storedRows.map(async (s) => ({
@@ -53,7 +48,7 @@ export async function GET(req: Request) {
         count: await countByRule(ORG_ID, s.ruleDefinition as RuleGroup), status: "ready" as const, preset: false,
       })),
     );
-    return NextResponse.json({ ok: true, segments: [...stored, ...presets] });
+    return NextResponse.json({ ok: true, segments: stored });
   } catch (err) {
     return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 500 });
   }
