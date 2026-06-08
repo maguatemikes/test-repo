@@ -61,11 +61,20 @@ function ruleLine(r: Rule): string {
   return `${f} ${OP_LABEL[r.op] ?? r.op} ${v}`;
 }
 
+/** Render any node (condition or nested group) to an inline string. */
+function nodeLine(node: Rule | RuleGroup): string {
+  if ("rules" in node) {
+    const sep = node.op === "OR" ? " OR " : " AND ";
+    return `(${node.rules.map(nodeLine).join(sep)})`;
+  }
+  return ruleLine(node);
+}
+
 /** Turn a stored rule tree into display strings (subsequent OR rows get an "OR: " prefix). */
 export function ruleToDisplay(group: RuleGroup): string[] {
   const out: string[] = [];
   (group.rules || []).forEach((node, i) => {
-    const text = "rules" in node ? "(group)" : ruleLine(node);
+    const text = nodeLine(node);
     out.push(i > 0 && group.op === "OR" ? `OR: ${text}` : text);
   });
   return out.length ? out : ["All contacts"];
@@ -149,6 +158,14 @@ export async function getSegmentById(id: number): Promise<Segment | null> {
 export async function createSegment(orgId: number, name: string, ruleDefinition: unknown, description?: string): Promise<number> {
   const [res] = await db.insert(segments).values({ orgId, name, ruleDefinition, description });
   return res.insertId;
+}
+
+export async function updateSegment(id: number, data: { name?: string; ruleDefinition?: unknown }): Promise<void> {
+  const set: Record<string, unknown> = {};
+  if (data.name !== undefined) set.name = data.name;
+  if (data.ruleDefinition !== undefined) set.ruleDefinition = data.ruleDefinition;
+  if (Object.keys(set).length === 0) return;
+  await db.update(segments).set(set).where(eq(segments.id, id));
 }
 
 export async function deleteSegment(id: number): Promise<void> {

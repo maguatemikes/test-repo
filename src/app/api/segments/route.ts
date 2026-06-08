@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import {
   getPreset, countByRule, sampleByRule,
-  listSegments, getSegmentById, createSegment, ruleToDisplay, type RuleGroup,
+  listSegments, getSegmentById, createSegment, updateSegment, ruleToDisplay, type RuleGroup,
 } from "@/server/repositories/segments";
+
+const dbId = (id: string | number) => Number(String(id).replace(/^db-/, ""));
 
 // TODO: derive org from auth once wired.
 const ORG_ID = 1;
@@ -32,8 +34,15 @@ async function resolveRule(id: string): Promise<RuleGroup | null> {
 // GET /api/segments            → preset + stored segments with live counts
 // GET /api/segments?preview=ID → a sample of members for that segment
 export async function GET(req: Request) {
-  const previewId = new URL(req.url).searchParams.get("preview");
+  const url = new URL(req.url);
+  const previewId = url.searchParams.get("preview");
+  const editId = url.searchParams.get("edit");
   try {
+    if (editId) {
+      const seg = await getSegmentById(dbId(editId));
+      if (!seg) return NextResponse.json({ ok: false, error: "Segment not found" }, { status: 404 });
+      return NextResponse.json({ ok: true, segment: { id: `db-${seg.id}`, name: seg.name, rule: seg.ruleDefinition } });
+    }
     if (previewId) {
       const rule = await resolveRule(previewId);
       if (!rule) return NextResponse.json({ ok: false, error: "Segment not found" }, { status: 404 });
@@ -67,6 +76,10 @@ export async function POST(req: Request) {
     if (body.save) {
       const name = String(body.name || "").trim();
       if (!name) return NextResponse.json({ ok: false, error: "A segment name is required" }, { status: 400 });
+      if (body.id) {
+        await updateSegment(dbId(body.id), { name, ruleDefinition: rule });
+        return NextResponse.json({ ok: true, id: body.id });
+      }
       const id = await createSegment(ORG_ID, name, rule);
       return NextResponse.json({ ok: true, id }, { status: 201 });
     }
