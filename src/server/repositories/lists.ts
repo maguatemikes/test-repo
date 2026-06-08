@@ -2,14 +2,50 @@
  * Lists data-access layer (server-only).
  * Static lists (crm_lists) with manual membership (crm_list_members).
  */
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { lists, listMembers } from "@/lib/db/schema";
+import { lists, listMembers, customers } from "@/lib/db/schema";
 
 export type List = typeof lists.$inferSelect;
 
 export function listLists(orgId: number) {
   return db.select().from(lists).where(eq(lists.orgId, orgId)).orderBy(desc(lists.createdAt));
+}
+
+/** Lists with a live member count (computed, not the denormalized column). */
+export function listListsWithCounts(orgId: number) {
+  return db
+    .select({
+      id: lists.id, name: lists.name, description: lists.description, source: lists.source,
+      createdAt: lists.createdAt,
+      count: count(listMembers.customerId),
+    })
+    .from(lists)
+    .leftJoin(listMembers, eq(listMembers.listId, lists.id))
+    .where(eq(lists.orgId, orgId))
+    .groupBy(lists.id)
+    .orderBy(desc(lists.createdAt));
+}
+
+/** A list's members joined to customer details. */
+export function getListMembersDetailed(listId: number, limit = 200) {
+  return db
+    .select({
+      id: customers.id, email: customers.email, displayName: customers.displayName,
+      firstName: customers.firstName, lastName: customers.lastName,
+      source: customers.source, addedAt: listMembers.addedAt,
+    })
+    .from(listMembers)
+    .innerJoin(customers, eq(customers.id, listMembers.customerId))
+    .where(eq(listMembers.listId, listId))
+    .orderBy(desc(listMembers.addedAt))
+    .limit(limit);
+}
+
+/** Delete a list and its membership rows. */
+export async function deleteList(id: number): Promise<void> {
+  await db.delete(listMembers).where(eq(listMembers.listId, id));
+  await db.delete(lists).where(eq(lists.id, id));
 }
 
 export async function getListById(id: number): Promise<List | null> {

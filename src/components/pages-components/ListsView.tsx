@@ -1,67 +1,108 @@
 "use client";
 
-import { List, Plus, MoreHorizontal, Users, Upload, Download, Archive, Search, X, ChevronLeft } from "lucide-react";
-import { useState } from "react";
+import { List, Plus, MoreHorizontal, Upload, Download, Trash2, Search, X, ChevronLeft } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
 import { ImportCsvModal } from "../ImportCsvModal";
 
-const lists = [
-  { id: "L001", name: "Newsletter Subscribers", members: 48291, source: "Form + CSV", created: "Jan 10, 2026", updated: "Jun 3, 2026", description: "All contacts opted in via newsletter forms and imports" },
-  { id: "L002", name: "VIP Customers", members: 3420, source: "Manual + Tag rule", created: "Feb 1, 2026", updated: "May 28, 2026", description: "Customers tagged as VIP with LTV > $2,000" },
-  { id: "L003", name: "Shopify Sync — All Buyers", members: 21804, source: "Shopify integration", created: "Jan 22, 2026", updated: "Jun 3, 2026", description: "Auto-synced from connected Shopify store" },
-  { id: "L004", name: "Blog Readers", members: 6120, source: "Form (slide-in)", created: "Mar 5, 2026", updated: "Jun 1, 2026", description: "Subscribers captured via blog sidebar opt-in" },
-  { id: "L005", name: "Waitlist — Footwear Launch", members: 840, source: "Form (full-screen)", created: "May 30, 2026", updated: "Jun 2, 2026", description: "Pre-launch interest list for upcoming footwear line" },
-  { id: "L006", name: "Win-back Pool", members: 9830, source: "Segment export", created: "Apr 14, 2026", updated: "May 31, 2026", description: "Contacts inactive for 60+ days, exported from segment" },
-];
-
-const listMembers: Record<string, Array<{ name: string; email: string; joined: string; source: string }>> = {
-  L001: [
-    { name: "Sarah Mitchell", email: "sarah.m@outlook.com", joined: "Jan 12, 2026", source: "Form" },
-    { name: "David Chen", email: "dchen@devhub.io", joined: "Jan 14, 2026", source: "CSV Import" },
-    { name: "Priya Nair", email: "priya.nair@work.co", joined: "Jan 18, 2026", source: "Form" },
-    { name: "Emma Larsson", email: "emma.l@se.com", joined: "Jan 22, 2026", source: "Form" },
-    { name: "Yuki Tanaka", email: "yuki.t@hana.jp", joined: "Jun 3, 2026", source: "Form" },
-  ],
-  L002: [
-    { name: "Priya Nair", email: "priya.nair@work.co", joined: "Feb 2, 2026", source: "Tag rule" },
-    { name: "Emma Larsson", email: "emma.l@se.com", joined: "Feb 5, 2026", source: "Tag rule" },
-    { name: "David Chen", email: "dchen@devhub.io", joined: "Feb 10, 2026", source: "Manual" },
-  ],
-};
+type ListRow = { id: number; name: string; description: string; source: string; count: number; created: string; updated: string };
+type MemberRow = { id: number; name: string; email: string; source: string; joined: string };
+type Candidate = { id: number; name: string; email: string };
 
 const sourceColors: Record<string, { bg: string; color: string }> = {
-  "Form": { bg: "#EFF6FF", color: "#1D4ED8" },
-  "Form + CSV": { bg: "#EFF6FF", color: "#1D4ED8" },
-  "CSV Import": { bg: "#F5F3FF", color: "#6D28D9" },
-  "Manual + Tag rule": { bg: "#FFF7ED", color: "#C2410C" },
-  "Shopify integration": { bg: "#F0FDF4", color: "#15803D" },
-  "Form (slide-in)": { bg: "#EFF6FF", color: "#1D4ED8" },
-  "Form (full-screen)": { bg: "#EFF6FF", color: "#1D4ED8" },
-  "Segment export": { bg: "#FEF9C3", color: "#854D0E" },
-  "Tag rule": { bg: "#FFF7ED", color: "#C2410C" },
-  "Manual": { bg: "#F8FAFC", color: "#475569" },
+  form: { bg: "#EFF6FF", color: "#1D4ED8" },
+  manual: { bg: "#F8FAFC", color: "#475569" },
+  csv: { bg: "#F5F3FF", color: "#6D28D9" },
+  netx_backfill: { bg: "#FEF9C3", color: "#854D0E" },
+  api: { bg: "#F0FDF4", color: "#15803D" },
 };
+const sourceLabel = (s: string) =>
+  ({ form: "Form", manual: "Manual", csv: "CSV", netx_backfill: "Import", api: "API" }[s] || s);
 
 interface ListsViewProps {
   onBack?: () => void;
 }
 
-export function ListsView({ onBack }: ListsViewProps) {
-  const [openList, setOpenList] = useState<string | null>(null);
+export function ListsView({ }: ListsViewProps) {
+  const [lists, setLists] = useState<ListRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [openList, setOpenList] = useState<number | null>(null);
+  const [members, setMembers] = useState<MemberRow[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
   const [query, setQuery] = useState("");
   const [csvModalOpen, setCsvModalOpen] = useState(false);
 
-  const selectedList = lists.find((l) => l.id === openList);
-  const members = openList ? (listMembers[openList] ?? []) : [];
+  // Add-member search state
+  const [adding, setAdding] = useState(false);
+  const [addQuery, setAddQuery] = useState("");
+  const [addResults, setAddResults] = useState<Candidate[]>([]);
 
+  const loadLists = useCallback(() => {
+    setLoading(true);
+    fetch("/api/lists")
+      .then((r) => r.json())
+      .then((d) => setLists(d.lists || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+  useEffect(() => { loadLists(); }, [loadLists]);
+
+  const loadMembers = useCallback((id: number) => {
+    setMembersLoading(true);
+    fetch(`/api/lists?members=${id}`)
+      .then((r) => r.json())
+      .then((d) => setMembers(d.members || []))
+      .catch(() => {})
+      .finally(() => setMembersLoading(false));
+  }, []);
+
+  const openDetail = (id: number) => { setOpenList(id); setAdding(false); setAddQuery(""); setAddResults([]); loadMembers(id); };
+
+  const newList = async () => {
+    const name = window.prompt("New list name:");
+    if (!name || !name.trim()) return;
+    const res = await fetch("/api/lists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim() }) });
+    const d = await res.json();
+    if (d.ok) loadLists(); else alert(d.error || "Failed to create list");
+  };
+
+  const removeList = async (id: number) => {
+    if (!window.confirm("Delete this list? Members are removed from the list (customers are not deleted).")) return;
+    const res = await fetch(`/api/lists?id=${id}`, { method: "DELETE" });
+    const d = await res.json();
+    if (d.ok) { if (openList === id) setOpenList(null); loadLists(); } else alert(d.error || "Failed to delete");
+  };
+
+  const searchAdd = (q: string) => {
+    setAddQuery(q);
+    if (!q.trim()) { setAddResults([]); return; }
+    fetch(`/api/lists?search=${encodeURIComponent(q)}`)
+      .then((r) => r.json())
+      .then((d) => setAddResults(d.candidates || []))
+      .catch(() => {});
+  };
+
+  const addMemberToList = async (customerId: number) => {
+    if (!openList) return;
+    const res = await fetch("/api/lists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "add", listId: openList, customerId }) });
+    const d = await res.json();
+    if (d.ok) { setAddQuery(""); setAddResults([]); loadMembers(openList); loadLists(); } else alert(d.error || "Failed to add");
+  };
+
+  const removeMemberFromList = async (customerId: number) => {
+    if (!openList) return;
+    const res = await fetch("/api/lists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "remove", listId: openList, customerId }) });
+    const d = await res.json();
+    if (d.ok) { loadMembers(openList); loadLists(); } else alert(d.error || "Failed to remove");
+  };
+
+  const selectedList = lists.find((l) => l.id === openList);
+
+  // ---------- detail view ----------
   if (openList && selectedList) {
     return (
       <div className="p-6 space-y-4" style={{ fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif" }}>
         <div className="flex items-center gap-2 mb-2">
-          <button
-            onClick={() => setOpenList(null)}
-            className="flex items-center gap-1.5"
-            style={{ fontSize: 12, color: "#2563EB" }}
-          >
+          <button onClick={() => setOpenList(null)} className="flex items-center gap-1.5" style={{ fontSize: 12, color: "#2563EB" }}>
             <ChevronLeft size={13} /> Lists
           </button>
           <span style={{ color: "#CBD5E1", fontSize: 12 }}>/</span>
@@ -71,28 +112,48 @@ export function ListsView({ onBack }: ListsViewProps) {
         <div className="flex items-start justify-between">
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 600, color: "#0F172A" }}>{selectedList.name}</h2>
-            <p style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>{selectedList.description}</p>
+            <p style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>{selectedList.description || "Static list"}</p>
           </div>
           <div className="flex gap-2">
-            {csvModalOpen && selectedList && (
+            {csvModalOpen && (
               <ImportCsvModal onClose={() => setCsvModalOpen(false)} context="list" listName={selectedList.name} />
             )}
             <button onClick={() => setCsvModalOpen(true)} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5" style={{ fontSize: 12, border: "1px solid var(--border)", color: "#64748B", background: "#FFFFFF", cursor: "pointer" }}>
               <Upload size={12} /> Import CSV
             </button>
-            <button className="flex items-center gap-1.5 rounded-lg px-3 py-1.5" style={{ fontSize: 12, border: "1px solid var(--border)", color: "#64748B", background: "#FFFFFF" }}>
-              <Download size={12} /> Export
-            </button>
-            <button className="flex items-center gap-1.5 rounded-lg px-3 py-1.5" style={{ fontSize: 12, background: "#2563EB", color: "#FFFFFF" }}>
+            <button onClick={() => setAdding((a) => !a)} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5" style={{ fontSize: 12, background: "#2563EB", color: "#FFFFFF", cursor: "pointer" }}>
               <Plus size={12} /> Add Member
             </button>
           </div>
         </div>
 
+        {/* Add-member search */}
+        {adding && (
+          <div className="rounded-lg p-3" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
+            <div className="flex items-center gap-2 rounded-lg" style={{ border: "1px solid var(--border)", padding: "7px 12px" }}>
+              <Search size={13} color="#94A3B8" />
+              <input autoFocus value={addQuery} onChange={(e) => searchAdd(e.target.value)} placeholder="Search customers by name or email…"
+                style={{ background: "transparent", border: "none", outline: "none", fontSize: 12, color: "#0F172A", width: "100%" }} />
+            </div>
+            {addResults.length > 0 && (
+              <div className="mt-2" style={{ maxHeight: 220, overflowY: "auto" }}>
+                {addResults.map((c) => (
+                  <button key={c.id} onClick={() => addMemberToList(c.id)} className="flex items-center justify-between w-full px-2 py-2 rounded"
+                    style={{ fontSize: 12, color: "#0F172A", cursor: "pointer" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "#F8FAFC")} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                    <span><strong style={{ fontWeight: 500 }}>{c.name}</strong> <span style={{ color: "#94A3B8" }}>{c.email}</span></span>
+                    <span style={{ color: "#2563EB", fontSize: 11 }}>+ Add</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
           {[
-            { label: "Total Members", value: selectedList.members.toLocaleString() },
-            { label: "Source", value: selectedList.source },
+            { label: "Total Members", value: selectedList.count.toLocaleString() },
+            { label: "Source", value: sourceLabel(selectedList.source) },
             { label: "Last Updated", value: selectedList.updated },
           ].map((m) => (
             <div key={m.label} className="rounded-lg p-4" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
@@ -105,26 +166,27 @@ export function ListsView({ onBack }: ListsViewProps) {
         <div className="rounded-lg overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
           <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--border)", background: "#F8FAFC" }}>
             <span style={{ fontSize: 12, fontWeight: 500, color: "#0F172A" }}>Members</span>
-            <span style={{ fontSize: 11, color: "#64748B", fontFamily: "JetBrains Mono, monospace" }}>{members.length} shown of {selectedList.members.toLocaleString()}</span>
+            <span style={{ fontSize: 11, color: "#64748B", fontFamily: "JetBrains Mono, monospace" }}>{members.length} of {selectedList.count.toLocaleString()}</span>
           </div>
           <div className="overflow-x-auto"><table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "#F8FAFC", borderBottom: "1px solid var(--border)" }}>
                 {["Name / Email", "Joined", "Source", ""].map((h) => (
-                  <th key={h} style={{ textAlign: "left", fontSize: 10, fontWeight: 600, color: "#64748B", letterSpacing: "0.04em", padding: "8px 14px" }}>
-                    {h.toUpperCase()}
-                  </th>
+                  <th key={h} style={{ textAlign: "left", fontSize: 10, fontWeight: 600, color: "#64748B", letterSpacing: "0.04em", padding: "8px 14px" }}>{h.toUpperCase()}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {members.map((m, i) => {
+              {membersLoading ? (
+                <tr><td colSpan={4} style={{ padding: "32px 14px", textAlign: "center", fontSize: 12, color: "#94A3B8" }}>Loading members…</td></tr>
+              ) : members.length === 0 ? (
+                <tr><td colSpan={4} style={{ padding: "32px 14px", textAlign: "center", fontSize: 12, color: "#94A3B8" }}>No members yet — use “Add Member”.</td></tr>
+              ) : members.map((m, i) => {
                 const sc = sourceColors[m.source] || { bg: "#F8FAFC", color: "#64748B" };
                 return (
-                  <tr key={m.email} style={{ borderBottom: i < members.length - 1 ? "1px solid #F8FAFC" : "none" }}
+                  <tr key={m.id} style={{ borderBottom: i < members.length - 1 ? "1px solid #F8FAFC" : "none" }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "#FAFAFA")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                  >
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
                     <td style={{ padding: "10px 14px" }}>
                       <div className="flex items-center gap-2.5">
                         <div className="rounded-full flex items-center justify-center text-white"
@@ -139,21 +201,14 @@ export function ListsView({ onBack }: ListsViewProps) {
                     </td>
                     <td style={{ padding: "10px 14px", fontSize: 12, color: "#64748B" }}>{m.joined}</td>
                     <td style={{ padding: "10px 14px" }}>
-                      <span className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, background: sc.bg, color: sc.color }}>{m.source}</span>
+                      <span className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, background: sc.bg, color: sc.color }}>{sourceLabel(m.source)}</span>
                     </td>
                     <td style={{ padding: "10px 14px" }}>
-                      <button style={{ color: "#94A3B8" }}><X size={12} /></button>
+                      <button onClick={() => removeMemberFromList(m.id)} title="Remove from list" style={{ color: "#94A3B8", cursor: "pointer" }}><X size={12} /></button>
                     </td>
                   </tr>
                 );
               })}
-              {members.length === 0 && (
-                <tr>
-                  <td colSpan={4} style={{ padding: "32px 14px", textAlign: "center", fontSize: 12, color: "#94A3B8" }}>
-                    No member data loaded for this list.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table></div>
         </div>
@@ -161,20 +216,20 @@ export function ListsView({ onBack }: ListsViewProps) {
     );
   }
 
-  const filteredLists = lists.filter((l) =>
-    !query || l.name.toLowerCase().includes(query.toLowerCase())
-  );
+  // ---------- list view ----------
+  const filteredLists = lists.filter((l) => !query || l.name.toLowerCase().includes(query.toLowerCase()));
+  const totalMembers = lists.reduce((a, l) => a + l.count, 0);
 
   return (
     <div className="p-6 space-y-4" style={{ fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif" }}>
       <div className="flex items-center justify-between">
-        <div>
-          <p style={{ fontSize: 12, color: "#64748B" }}>
-            <strong style={{ fontWeight: 600, color: "#0F172A" }}>{lists.length}</strong> static lists ·{" "}
-            <strong style={{ fontWeight: 600, color: "#0F172A" }}>{lists.reduce((a, l) => a + l.members, 0).toLocaleString()}</strong> total members
-          </p>
-        </div>
-        <button className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF" }}>
+        <p style={{ fontSize: 12, color: "#64748B" }}>
+          {loading ? "Loading lists…" : (
+            <><strong style={{ fontWeight: 600, color: "#0F172A" }}>{lists.length}</strong> static lists ·{" "}
+            <strong style={{ fontWeight: 600, color: "#0F172A" }}>{totalMembers.toLocaleString()}</strong> total members</>
+          )}
+        </p>
+        <button onClick={newList} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF", cursor: "pointer" }}>
           <Plus size={13} /> New List
         </button>
       </div>
@@ -192,23 +247,21 @@ export function ListsView({ onBack }: ListsViewProps) {
           <thead>
             <tr style={{ background: "#F8FAFC", borderBottom: "1px solid var(--border)" }}>
               {["List Name", "Members", "Source", "Created", "Last Updated", ""].map((h) => (
-                <th key={h} style={{ textAlign: "left", fontSize: 10, fontWeight: 600, color: "#64748B", letterSpacing: "0.04em", padding: "9px 14px" }}>
-                  {h.toUpperCase()}
-                </th>
+                <th key={h} style={{ textAlign: "left", fontSize: 10, fontWeight: 600, color: "#64748B", letterSpacing: "0.04em", padding: "9px 14px" }}>{h.toUpperCase()}</th>
               ))}
             </tr>
           </thead>
           <tbody>
+            {!loading && filteredLists.length === 0 && (
+              <tr><td colSpan={6} style={{ padding: "32px 14px", textAlign: "center", fontSize: 12, color: "#94A3B8" }}>No lists yet — create one with “New List”.</td></tr>
+            )}
             {filteredLists.map((l, i) => {
               const sc = sourceColors[l.source] || { bg: "#F8FAFC", color: "#64748B" };
               return (
-                <tr
-                  key={l.id}
-                  style={{ borderBottom: i < filteredLists.length - 1 ? "1px solid #F8FAFC" : "none", cursor: "pointer" }}
-                  onClick={() => setOpenList(l.id)}
+                <tr key={l.id} style={{ borderBottom: i < filteredLists.length - 1 ? "1px solid #F8FAFC" : "none", cursor: "pointer" }}
+                  onClick={() => openDetail(l.id)}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "#FAFAFA")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                >
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
                   <td style={{ padding: "11px 14px" }}>
                     <div className="flex items-center gap-2.5">
                       <div className="rounded-lg flex items-center justify-center" style={{ width: 28, height: 28, background: "#EFF6FF" }}>
@@ -220,18 +273,16 @@ export function ListsView({ onBack }: ListsViewProps) {
                       </div>
                     </div>
                   </td>
-                  <td style={{ padding: "11px 14px", fontFamily: "JetBrains Mono, monospace", fontSize: 12, fontWeight: 500, color: "#0F172A" }}>
-                    {l.members.toLocaleString()}
-                  </td>
+                  <td style={{ padding: "11px 14px", fontFamily: "JetBrains Mono, monospace", fontSize: 12, fontWeight: 500, color: "#0F172A" }}>{l.count.toLocaleString()}</td>
                   <td style={{ padding: "11px 14px" }}>
-                    <span className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, background: sc.bg, color: sc.color }}>{l.source}</span>
+                    <span className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, background: sc.bg, color: sc.color }}>{sourceLabel(l.source)}</span>
                   </td>
                   <td style={{ padding: "11px 14px", fontSize: 11, color: "#64748B" }}>{l.created}</td>
                   <td style={{ padding: "11px 14px", fontSize: 11, color: "#64748B" }}>{l.updated}</td>
                   <td style={{ padding: "11px 14px" }}>
                     <div className="flex items-center gap-1">
-                      <button style={{ color: "#94A3B8" }} onClick={(e) => e.stopPropagation()}><Download size={13} /></button>
-                      <button style={{ color: "#94A3B8" }} onClick={(e) => e.stopPropagation()}><Archive size={13} /></button>
+                      <button style={{ color: "#94A3B8" }} onClick={(e) => e.stopPropagation()} title="Export"><Download size={13} /></button>
+                      <button style={{ color: "#94A3B8" }} onClick={(e) => { e.stopPropagation(); removeList(l.id); }} title="Delete list"><Trash2 size={13} /></button>
                       <button style={{ color: "#94A3B8" }} onClick={(e) => e.stopPropagation()}><MoreHorizontal size={13} /></button>
                     </div>
                   </td>
