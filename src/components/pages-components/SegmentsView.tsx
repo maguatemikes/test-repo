@@ -1,23 +1,13 @@
 "use client";
 
 import { Filter, Plus, ChevronLeft, RefreshCw, Copy, Archive, MoreHorizontal, Search, Eye, Play, Trash2, ChevronDown, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
-const segments = [
-  { id: "S001", name: "High-value recent buyers", count: 4210, refreshed: "2h ago", status: "ready", rules: ['Total Revenue > $500', 'Last Order within 30 days'], created: "May 30, 2026" },
-  { id: "S002", name: "At-risk customers", count: 9830, refreshed: "4h ago", status: "ready", rules: ['Last engagement > 45 days ago', 'Has placed at least 1 order'], created: "Feb 14, 2026" },
-  { id: "S003", name: "VIP or high LTV", count: 3420, refreshed: "1h ago", status: "ready", rules: ['Tag is VIP', 'OR: Customer Lifetime Value > $1,000'], created: "Mar 1, 2026" },
-  { id: "S004", name: "New subscribers — last 7 days", count: 648, refreshed: "30m ago", status: "ready", rules: ['Contact created within last 7 days', 'Source is Form'], created: "Jun 1, 2026" },
-  { id: "S005", name: "Shopify buyers — no email opens", count: 12440, refreshed: "6h ago", status: "stale", rules: ['Source is Shopify', 'No email opened in last 90 days'], created: "Apr 22, 2026" },
-  { id: "S006", name: "Discount seekers", count: 2180, refreshed: "3h ago", status: "ready", rules: ['Has used a discount code', 'Total orders > 2'], created: "Mar 18, 2026" },
-];
+type SegRow = { id: string; name: string; rules: string[]; count: number; status: string };
+type Member = { name: string; email: string; spend: string; lastOrder: string };
 
-const segmentMembers = [
-  { name: "Sarah Mitchell", email: "sarah.m@outlook.com", spend: "$4,820", lastOrder: "Jun 2, 2026" },
-  { name: "Priya Nair", email: "priya.nair@work.co", spend: "$9,100", lastOrder: "May 28, 2026" },
-  { name: "David Chen", email: "dchen@devhub.io", spend: "$6,450", lastOrder: "Jun 1, 2026" },
-  { name: "Emma Larsson", email: "emma.l@se.com", spend: "$12,800", lastOrder: "Jun 3, 2026" },
-];
+// Builder member preview is a separate (future) feature; placeholder for now.
+const segmentMembers: Member[] = [];
 
 const statusConfig: Record<string, { bg: string; color: string; dot: string; label: string }> = {
   ready: { bg: "#F0FDF4", color: "#15803D", dot: "#22C55E", label: "Ready" },
@@ -33,6 +23,35 @@ export function SegmentsView() {
   const [openSegment, setOpenSegment] = useState<string | null>(null);
   const [building, setBuilding] = useState(false);
   const [query, setQuery] = useState("");
+  const [segments, setSegments] = useState<SegRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+
+  // Load real segments with live counts.
+  useEffect(() => {
+    let active = true;
+    fetch("/api/segments")
+      .then((r) => r.json())
+      .then((d) => { if (active) setSegments(d.segments || []); })
+      .catch(() => {})
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  // Load real member preview when a segment is opened.
+  useEffect(() => {
+    if (!openSegment) return;
+    let active = true;
+    setMembersLoading(true);
+    setMembers([]);
+    fetch(`/api/segments?preview=${encodeURIComponent(openSegment)}`)
+      .then((r) => r.json())
+      .then((d) => { if (active) setMembers(d.members || []); })
+      .catch(() => {})
+      .finally(() => { if (active) setMembersLoading(false); });
+    return () => { active = false; };
+  }, [openSegment]);
 
   const selectedSegment = segments.find((s) => s.id === openSegment);
 
@@ -54,7 +73,7 @@ export function SegmentsView() {
         <div className="flex items-start justify-between">
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 600, color: "#0F172A" }}>{selectedSegment.name}</h2>
-            <p style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>Refreshed {selectedSegment.refreshed}</p>
+            <p style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>Live · evaluated in real-time</p>
           </div>
           <div className="flex gap-2">
             <button className="flex items-center gap-1.5 rounded-lg px-3 py-1.5" style={{ fontSize: 12, border: "1px solid var(--border)", color: "#64748B", background: "#FFFFFF" }}>
@@ -73,8 +92,8 @@ export function SegmentsView() {
           {[
             { label: "Matching Contacts", value: selectedSegment.count.toLocaleString() },
             { label: "Rules", value: `${selectedSegment.rules.length} conditions` },
-            { label: "Status", value: statusConfig[selectedSegment.status].label },
-            { label: "Created", value: selectedSegment.created },
+            { label: "Status", value: statusConfig[selectedSegment.status]?.label ?? "Ready" },
+            { label: "Evaluation", value: "Real-time" },
           ].map((m) => (
             <div key={m.label} className="rounded-lg p-4" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
               <p style={{ fontSize: 11, color: "#64748B", marginBottom: 4 }}>{m.label}</p>
@@ -119,8 +138,12 @@ export function SegmentsView() {
               </tr>
             </thead>
             <tbody>
-              {segmentMembers.map((m, i) => (
-                <tr key={m.email} style={{ borderBottom: i < segmentMembers.length - 1 ? "1px solid #F8FAFC" : "none" }}
+              {membersLoading ? (
+                <tr><td colSpan={3} style={{ padding: "20px 14px", textAlign: "center", fontSize: 12, color: "#94A3B8" }}>Loading members…</td></tr>
+              ) : members.length === 0 ? (
+                <tr><td colSpan={3} style={{ padding: "20px 14px", textAlign: "center", fontSize: 12, color: "#94A3B8" }}>No matching members</td></tr>
+              ) : members.map((m, i) => (
+                <tr key={m.email} style={{ borderBottom: i < members.length - 1 ? "1px solid #F8FAFC" : "none" }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "#FAFAFA")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 >
@@ -153,7 +176,7 @@ export function SegmentsView() {
     <div className="p-6 space-y-4" style={{ fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif" }}>
       <div className="flex items-center justify-between">
         <p style={{ fontSize: 12, color: "#64748B" }}>
-          <strong style={{ fontWeight: 600, color: "#0F172A" }}>{segments.length}</strong> dynamic segments
+          {loading ? "Loading segments…" : <><strong style={{ fontWeight: 600, color: "#0F172A" }}>{segments.length}</strong> dynamic segments · evaluated live</>}
         </p>
         <button onClick={() => setBuilding(true)} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF" }}>
           <Plus size={13} /> New Segment
