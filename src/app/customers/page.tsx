@@ -13,6 +13,18 @@ const fmt = (d: Date | string | null) =>
 const daysSince = (d: Date | string | null) =>
   d ? (Date.now() - new Date(d).getTime()) / 86_400_000 : Infinity;
 
+const sourceLabel = (s: string | null | undefined) => {
+  switch (s) {
+    case "netx_backfill": return "Import";
+    case "form": return "Form";
+    case "api": return "API";
+    case "manual": return "Manual";
+    case "csv": return "CSV";
+    case "shopify": return "Shopify";
+    default: return s || "—";
+  }
+};
+
 /** Derive behavioral tags from the live order metrics (no DB writes). */
 function computeTags(r: {
   lifetimeSpend?: string | number | null;
@@ -65,6 +77,7 @@ export default async function CustomersPage({
       location: r.company || "—",
       joined: fmt(r.createdAt),
       channel: r.primaryChannel || "—",
+      source: sourceLabel(r.source),
     }));
   } catch (err) {
     console.error("[customers] DB fetch failed:", err);
