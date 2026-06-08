@@ -1,4 +1,4 @@
-import { searchCustomers } from "@/server/repositories/customers";
+import { searchCustomers, getChannels } from "@/server/repositories/customers";
 import { CustomersClient } from "@/components/pages-components/CustomersClient";
 
 // TODO: derive org from auth once wired.
@@ -51,17 +51,25 @@ function computeTags(r: {
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; tag?: string; source?: string; channel?: string }>;
 }) {
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
+  const tag = (sp.tag ?? "").trim();
+  const source = (sp.source ?? "").trim();
+  const channel = (sp.channel ?? "").trim();
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
   let dbCustomers: React.ComponentProps<typeof CustomersClient>["dbCustomers"] = [];
   let total = 0;
+  let channels: string[] = [];
 
   try {
-    const res = await searchCustomers(ORG_ID, { q, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE });
+    const [res, chans] = await Promise.all([
+      searchCustomers(ORG_ID, { q, tag, source, channel, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
+      getChannels(ORG_ID),
+    ]);
+    channels = chans;
     total = res.total;
     dbCustomers = res.rows.map((r) => ({
       id: String(r.id),
@@ -90,6 +98,10 @@ export default async function CustomersPage({
       page={page}
       pageSize={PAGE_SIZE}
       query={q}
+      tag={tag}
+      source={source}
+      channel={channel}
+      channels={channels}
     />
   );
 }

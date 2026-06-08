@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, Upload, Download, MoreHorizontal, Star, AlertTriangle, UserPlus, RefreshCw, X, ShoppingBag, Mail, MapPin, Activity, ChevronRight, Package } from "lucide-react";
+import { Search, Upload, Download, MoreHorizontal, Star, AlertTriangle, UserPlus, RefreshCw, X, ShoppingBag, Mail, MapPin, Activity, ChevronRight, Package, SlidersHorizontal } from "lucide-react";
 import { useState, useEffect } from "react";
 import { ListsView } from "./ListsView";
 import { SegmentsView } from "./SegmentsView";
@@ -81,6 +81,43 @@ function avatarColor(id: string) {
   const idx = id.charCodeAt(1) % colors.length;
   return colors[idx];
 }
+
+type CRow = (typeof mockCustomers)[number] & { channel?: string; source?: string };
+
+// Column-driven table so columns can be shown/hidden.
+const CUSTOMER_COLUMNS: { key: string; label: string; render: (c: CRow) => React.ReactNode }[] = [
+  {
+    key: "name", label: "Name / Email",
+    render: (c) => (
+      <div className="flex items-center gap-2.5">
+        <div className="rounded-full flex items-center justify-center text-white shrink-0" style={{ width: 28, height: 28, background: avatarColor(c.id), fontSize: 10, fontWeight: 500 }}>
+          {c.name.split(" ").map((n) => n[0]).join("")}
+        </div>
+        <div>
+          <p style={{ fontSize: 12, fontWeight: 500, color: "#0F172A" }}>{c.name}</p>
+          <p style={{ fontSize: 11, color: "#64748B" }}>{c.email}</p>
+        </div>
+      </div>
+    ),
+  },
+  {
+    key: "tags", label: "Tags",
+    render: (c) => (
+      <div className="flex flex-wrap gap-1">
+        {c.tags.map((tag) => {
+          const ts = tagStyles[tag] || { bg: "#F1F5F9", color: "#64748B" };
+          return <span key={tag} className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, background: ts.bg, color: ts.color }}>{tag}</span>;
+        })}
+      </div>
+    ),
+  },
+  { key: "spend", label: "Lifetime Spend", render: (c) => <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12, fontWeight: 500, color: "#0F172A" }}>{c.spend}</span> },
+  { key: "lastOrder", label: "Last Order", render: (c) => <span style={{ fontSize: 12, color: "#64748B" }}>{c.lastOrder}</span> },
+  { key: "lastEmail", label: "Last Engagement", render: (c) => <span style={{ fontSize: 12, color: "#64748B" }}>{c.lastEmail}</span> },
+  { key: "channel", label: "Channel", render: (c) => (c.channel && c.channel !== "—" ? <span className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, background: "#EFF6FF", color: "#1D4ED8" }}>{c.channel}</span> : <span style={{ fontSize: 12, color: "#CBD5E1" }}>—</span>) },
+  { key: "source", label: "Source", render: (c) => (c.source && c.source !== "—" ? <span className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, background: "#F1F5F9", color: "#475569" }}>{c.source}</span> : <span style={{ fontSize: 12, color: "#CBD5E1" }}>—</span>) },
+];
+const HIDEABLE_COLUMNS = CUSTOMER_COLUMNS.filter((c) => c.key !== "name");
 
 function CustomerDrawer({ customer, onClose }: { customer: typeof mockCustomers[0]; onClose: () => void }) {
   const [drawerTab, setDrawerTab] = useState<DrawerTab>("overview");
@@ -339,19 +376,41 @@ interface CustomersViewProps {
   page?: number;
   pageSize?: number;
   serverQuery?: string;
+  serverTag?: string;
+  serverSource?: string;
+  serverChannel?: string;
+  channels?: string[];
   onSearch?: (q: string) => void;
+  onFilter?: (key: "tag" | "source" | "channel", value: string) => void;
   onPage?: (p: number) => void;
 }
 
 export function CustomersView({
   initialTab = "customers", onSubTabChange, dbCustomers,
-  total = 0, page = 1, pageSize = 100, serverQuery = "", onSearch, onPage,
+  total = 0, page = 1, pageSize = 100, serverQuery = "",
+  serverTag = "", serverSource = "", serverChannel = "", channels = [],
+  onSearch, onFilter, onPage,
 }: CustomersViewProps) {
-  // Server-driven list (search + pagination happen in the DB).
+  // Server-driven list (search + filters + pagination happen in the DB).
   const customers = dbCustomers ?? [];
   const [subTab, setSubTab] = useState<SubTab>(initialTab);
   const [query, setQuery] = useState(serverQuery);
-  const [activeChip, setActiveChip] = useState("all");
+  const [colsOpen, setColsOpen] = useState(false);
+  const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(CUSTOMER_COLUMNS.map((c) => [c.key, true])),
+  );
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem("crm_cust_cols");
+      if (s) setVisibleCols((prev) => ({ ...prev, ...JSON.parse(s) }));
+    } catch {}
+  }, []);
+  const toggleCol = (k: string) =>
+    setVisibleCols((prev) => {
+      const next = { ...prev, [k]: !prev[k] };
+      try { localStorage.setItem("crm_cust_cols", JSON.stringify(next)); } catch {}
+      return next;
+    });
   const [selected, setSelected] = useState<string[]>([]);
   const [drawerCustomer, setDrawerCustomer] = useState<typeof mockCustomers[0] | null>(null);
   const [csvModalOpen, setCsvModalOpen] = useState(false);
@@ -373,8 +432,8 @@ export function CustomersView({
 
   const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
 
-  // Search is server-side now; only the tag chip filters the current page.
-  const filtered = customers.filter((c) => activeChip === "all" || c.tags.includes(activeChip));
+  // Everything (search, tag, source, channel, pagination) is server-side now.
+  const filtered = customers;
 
   const toggleSelect = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -433,8 +492,8 @@ export function CustomersView({
       {tabBar}
 
       {/* Filters row */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 rounded-lg flex-1 max-w-xs"
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 rounded-lg flex-1 min-w-[180px] max-w-xs"
           style={{ background: "#FFFFFF", border: "1px solid var(--border)", padding: "7px 12px" }}>
           <Search size={13} color="#94A3B8" />
           <input
@@ -445,21 +504,22 @@ export function CustomersView({
           />
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Tag filter chips (server-side) */}
+        <div className="flex items-center gap-2 flex-wrap">
           {chipFilters.map((chip) => {
             const Icon = chip.icon;
-            const isActive = activeChip === chip.value;
+            const isActive = chip.value === "all" ? !serverTag : serverTag === chip.value;
             return (
               <button
                 key={chip.value}
-                onClick={() => setActiveChip(chip.value)}
+                onClick={() => onFilter?.("tag", chip.value === "all" ? "" : chip.value)}
                 className="flex items-center gap-1.5 rounded-full px-3 py-1.5"
                 style={{
                   fontSize: 12, fontWeight: 500,
                   background: isActive ? "#0F172A" : "#FFFFFF",
                   color: isActive ? "#FFFFFF" : "#64748B",
                   border: `1px solid ${isActive ? "#0F172A" : "var(--border)"}`,
-                  fontFamily: font,
+                  fontFamily: font, cursor: "pointer",
                 }}
               >
                 {Icon && <Icon size={11} />}
@@ -469,7 +529,42 @@ export function CustomersView({
           })}
         </div>
 
+        {/* Source filter */}
+        <select value={serverSource} onChange={(e) => onFilter?.("source", e.target.value)}
+          style={{ fontSize: 12, padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 8, background: "#FFFFFF", color: "#64748B", fontFamily: font, cursor: "pointer" }}>
+          <option value="">All sources</option>
+          <option value="form">Form</option>
+          <option value="netx_backfill">Import</option>
+          <option value="api">API</option>
+        </select>
+
+        {/* Channel filter */}
+        <select value={serverChannel} onChange={(e) => onFilter?.("channel", e.target.value)}
+          style={{ fontSize: 12, padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 8, background: "#FFFFFF", color: "#64748B", fontFamily: font, cursor: "pointer", maxWidth: 180 }}>
+          <option value="">All channels</option>
+          {channels.map((ch) => <option key={ch} value={ch}>{ch}</option>)}
+        </select>
+
         <div className="flex-1" />
+
+        {/* Columns show/hide */}
+        <div style={{ position: "relative" }}>
+          <button onClick={() => setColsOpen((o) => !o)} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5"
+            style={{ fontSize: 12, background: "#FFFFFF", border: "1px solid var(--border)", color: "#64748B", fontFamily: font, cursor: "pointer" }}>
+            <SlidersHorizontal size={13} /> Columns
+          </button>
+          {colsOpen && (
+            <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: 190, background: "#FFFFFF", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.10)", zIndex: 50, padding: 6 }}>
+              {HIDEABLE_COLUMNS.map((col) => (
+                <label key={col.key} className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer" style={{ fontSize: 12, color: "#334155" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "#F8FAFC")} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                  <input type="checkbox" checked={!!visibleCols[col.key]} onChange={() => toggleCol(col.key)} style={{ accentColor: "#2563EB" }} />
+                  {col.label}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
 
         {selected.length > 0 && (
           <div className="flex items-center gap-2">
@@ -515,14 +610,15 @@ export function CustomersView({
                   style={{ accentColor: "#2563EB" }}
                 />
               </th>
-              {["Name / Email", "Tags", "Lifetime Spend", "Last Order", "Last Engagement", "Channel", "Source", ""].map((h) => (
-                <th key={h} style={{
+              {CUSTOMER_COLUMNS.filter((col) => visibleCols[col.key]).map((col) => (
+                <th key={col.key} style={{
                   textAlign: "left", fontSize: 10, fontWeight: 600, color: "#64748B",
                   letterSpacing: "0.04em", padding: "9px 14px", fontFamily: font,
                 }}>
-                  {h.toUpperCase()}
+                  {col.label.toUpperCase()}
                 </th>
               ))}
+              <th style={{ padding: "9px 14px" }} />
             </tr>
           </thead>
           <tbody>
@@ -548,52 +644,9 @@ export function CustomersView({
                       style={{ accentColor: "#2563EB" }}
                     />
                   </td>
-                  <td style={{ padding: "10px 14px" }}>
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className="rounded-full flex items-center justify-center text-white shrink-0"
-                        style={{ width: 28, height: 28, background: avatarColor(c.id), fontSize: 10, fontWeight: 500 }}
-                      >
-                        {c.name.split(" ").map((n) => n[0]).join("")}
-                      </div>
-                      <div>
-                        <p style={{ fontSize: 12, fontWeight: 500, color: "#0F172A" }}>{c.name}</p>
-                        <p style={{ fontSize: 11, color: "#64748B" }}>{c.email}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td style={{ padding: "10px 14px" }}>
-                    <div className="flex flex-wrap gap-1">
-                      {c.tags.map((tag) => {
-                        const ts = tagStyles[tag] || { bg: "#F1F5F9", color: "#64748B" };
-                        return (
-                          <span key={tag} className="rounded-full px-2 py-0.5"
-                            style={{ fontSize: 10, fontWeight: 500, background: ts.bg, color: ts.color }}>
-                            {tag}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </td>
-                  <td style={{ padding: "10px 14px", fontFamily: "JetBrains Mono, monospace", fontSize: 12, fontWeight: 500, color: "#0F172A" }}>
-                    {c.spend}
-                  </td>
-                  <td style={{ padding: "10px 14px", fontSize: 12, color: "#64748B" }}>{c.lastOrder}</td>
-                  <td style={{ padding: "10px 14px", fontSize: 12, color: "#64748B" }}>{c.lastEmail}</td>
-                  <td style={{ padding: "10px 14px" }}>
-                    {c.channel && c.channel !== "—" ? (
-                      <span className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, background: "#EFF6FF", color: "#1D4ED8" }}>{c.channel}</span>
-                    ) : (
-                      <span style={{ fontSize: 12, color: "#CBD5E1" }}>—</span>
-                    )}
-                  </td>
-                  <td style={{ padding: "10px 14px" }}>
-                    {c.source && c.source !== "—" ? (
-                      <span className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, background: "#F1F5F9", color: "#475569" }}>{c.source}</span>
-                    ) : (
-                      <span style={{ fontSize: 12, color: "#CBD5E1" }}>—</span>
-                    )}
-                  </td>
+                  {CUSTOMER_COLUMNS.filter((col) => visibleCols[col.key]).map((col) => (
+                    <td key={col.key} style={{ padding: "10px 14px" }}>{col.render(c)}</td>
+                  ))}
                   <td style={{ padding: "10px 14px" }} onClick={(e) => e.stopPropagation()}>
                     <button style={{ color: "#94A3B8" }}><MoreHorizontal size={15} /></button>
                   </td>

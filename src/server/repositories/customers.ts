@@ -3,7 +3,7 @@
  * Reusable CRUD — call from server components, server actions, route handlers.
  * Do NOT import into client components.
  */
-import { and, count, desc, eq, like, or } from "drizzle-orm";
+import { and, count, desc, eq, gte, like, lt, lte, or, sql, isNotNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { customers } from "@/lib/db/schema";
 
@@ -19,25 +19,46 @@ export function getCustomers(orgId: number, limit = 200) {
     .limit(limit);
 }
 
-/** Server-side search + pagination. Returns the page of rows and the total match count. */
+/** Translate a behavioral tag label into a SQL condition over the stored metrics. */
+function tagCondition(tag: string) {
+  switch (tag) {
+    case "VIP": return gte(customers.lifetimeSpend, "1000");
+    case "High LTV": return and(gte(customers.lifetimeSpend, "500"), lt(customers.lifetimeSpend, "1000"));
+    case "Loyal": return gte(customers.orderCount, 5);
+    case "At Risk": return and(gte(customers.orderCount, 1), sql`${customers.lastOrderAt} < (NOW() - INTERVAL 60 DAY)`);
+    case "New": return and(lte(customers.orderCount, 1), sql`${customers.lastOrderAt} >= (NOW() - INTERVAL 60 DAY)`);
+    case "Has Refund": return gte(customers.refundCount, 1);
+    default: return undefined;
+  }
+}
+
+/** Server-side search + filters + pagination. Returns the page of rows and the total match count. */
 export async function searchCustomers(
   orgId: number,
-  opts: { q?: string; limit?: number; offset?: number } = {},
+  opts: { q?: string; tag?: string; source?: string; channel?: string; limit?: number; offset?: number } = {},
 ): Promise<{ rows: Customer[]; total: number }> {
-  const { q = "", limit = 100, offset = 0 } = opts;
-  const term = `%${q}%`;
-  const where = q
-    ? and(
-        eq(customers.orgId, orgId),
-        or(
-          like(customers.email, term),
-          like(customers.displayName, term),
-          like(customers.firstName, term),
-          like(customers.lastName, term),
-          like(customers.company, term),
-        ),
-      )
-    : eq(customers.orgId, orgId);
+  const { q = "", tag = "", source = "", channel = "", limit = 100, offset = 0 } = opts;
+
+  const conds = [eq(customers.orgId, orgId)];
+  if (q) {
+    const term = `%${q}%`;
+    conds.push(
+      or(
+        like(customers.email, term),
+        like(customers.displayName, term),
+        like(customers.firstName, term),
+        like(customers.lastName, term),
+        like(customers.company, term),
+      )!,
+    );
+  }
+  if (source) conds.push(eq(customers.source, source));
+  if (channel) conds.push(eq(customers.primaryChannel, channel));
+  if (tag) {
+    const tc = tagCondition(tag);
+    if (tc) conds.push(tc);
+  }
+  const where = and(...conds);
 
   const [rows, totalRes] = await Promise.all([
     db.select().from(customers).where(where).orderBy(desc(customers.createdAt)).limit(limit).offset(offset),
@@ -45,6 +66,16 @@ export async function searchCustomers(
   ]);
 
   return { rows, total: Number(totalRes[0]?.total ?? 0) };
+}
+
+/** Distinct channels present for an org (for the filter dropdown). */
+export async function getChannels(orgId: number): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ ch: customers.primaryChannel })
+    .from(customers)
+    .where(and(eq(customers.orgId, orgId), isNotNull(customers.primaryChannel)))
+    .orderBy(customers.primaryChannel);
+  return rows.map((r) => r.ch).filter((c): c is string => !!c);
 }
 
 export async function getCustomerById(id: number): Promise<Customer | null> {
