@@ -10,6 +10,32 @@ export const dynamic = "force-dynamic";
 const fmt = (d: Date | string | null) =>
   d ? new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
 
+const daysSince = (d: Date | string | null) =>
+  d ? (Date.now() - new Date(d).getTime()) / 86_400_000 : Infinity;
+
+/** Derive behavioral tags from the live order metrics (no DB writes). */
+function computeTags(r: {
+  lifetimeSpend?: string | number | null;
+  orderCount?: number | null;
+  refundCount?: number | null;
+  lastOrderAt?: Date | string | null;
+}): string[] {
+  const tags: string[] = [];
+  const spend = Number(r.lifetimeSpend ?? 0);
+  const orders = r.orderCount ?? 0;
+  const refunds = r.refundCount ?? 0;
+  const dsl = daysSince(r.lastOrderAt ?? null);
+
+  if (spend >= 1000) tags.push("VIP");
+  else if (spend >= 500) tags.push("High LTV");
+  if (orders >= 5) tags.push("Loyal");
+  if (orders >= 1 && dsl > 60) tags.push("At Risk");
+  if (orders <= 1 && dsl <= 60) tags.push("New");
+  if (refunds >= 1) tags.push("Has Refund");
+  if (tags.length === 0) tags.push("Customer");
+  return tags;
+}
+
 export default async function CustomersPage({
   searchParams,
 }: {
@@ -30,7 +56,7 @@ export default async function CustomersPage({
       name: r.displayName || [r.firstName, r.lastName].filter(Boolean).join(" ") || r.email,
       email: r.email,
       phone: r.phone || "—",
-      tags: r.isVip ? ["VIP"] : r.source ? [r.source.charAt(0).toUpperCase() + r.source.slice(1)] : ["New"],
+      tags: computeTags(r),
       spend: `$${Number(r.lifetimeSpend ?? 0).toLocaleString()}`,
       ltv: Number(r.lifetimeSpend ?? 0),
       lastOrder: fmt(r.lastOrderAt),
