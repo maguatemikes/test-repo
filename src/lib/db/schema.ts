@@ -135,6 +135,7 @@ export const customers = mysqlTable("crm_customers",
     // Operator overlay
     notes:               text("notes"),
     source:              varchar("source", { length: 64 }), // shopify / form / csv / api / manual
+    primaryChannel:      varchar("primary_channel", { length: 64 }), // Website / eBay / WooCommerce / Phone …
     sourceMetadataJson:  json("source_metadata_json"),
 
     createdAt:           datetime("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),

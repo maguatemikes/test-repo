@@ -38,6 +38,7 @@ export default async function CustomersPage({
       status: r.isSubscribed ? "active" : "at-risk",
       location: r.company || "—",
       joined: fmt(r.createdAt),
+      channel: r.primaryChannel || "—",
     }));
   } catch (err) {
     console.error("[customers] DB fetch failed:", err);

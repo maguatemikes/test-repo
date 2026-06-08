@@ -334,7 +334,7 @@ interface CustomersViewProps {
   initialTab?: SubTab;
   onSubTabChange?: (tab: SubTab) => void;
   /** Current page of customers from the DB (already searched + paginated server-side). */
-  dbCustomers?: typeof mockCustomers;
+  dbCustomers?: ((typeof mockCustomers)[number] & { channel?: string })[];
   total?: number;
   page?: number;
   pageSize?: number;
@@ -515,7 +515,7 @@ export function CustomersView({
                   style={{ accentColor: "#2563EB" }}
                 />
               </th>
-              {["Name / Email", "Tags", "Lifetime Spend", "Last Order", "Last Engagement", ""].map((h) => (
+              {["Name / Email", "Tags", "Lifetime Spend", "Last Order", "Last Engagement", "Channel", ""].map((h) => (
                 <th key={h} style={{
                   textAlign: "left", fontSize: 10, fontWeight: 600, color: "#64748B",
                   letterSpacing: "0.04em", padding: "9px 14px", fontFamily: font,
@@ -580,6 +580,13 @@ export function CustomersView({
                   </td>
                   <td style={{ padding: "10px 14px", fontSize: 12, color: "#64748B" }}>{c.lastOrder}</td>
                   <td style={{ padding: "10px 14px", fontSize: 12, color: "#64748B" }}>{c.lastEmail}</td>
+                  <td style={{ padding: "10px 14px" }}>
+                    {c.channel && c.channel !== "—" ? (
+                      <span className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, background: "#EFF6FF", color: "#1D4ED8" }}>{c.channel}</span>
+                    ) : (
+                      <span style={{ fontSize: 12, color: "#CBD5E1" }}>—</span>
+                    )}
+                  </td>
                   <td style={{ padding: "10px 14px" }} onClick={(e) => e.stopPropagation()}>
                     <button style={{ color: "#94A3B8" }}><MoreHorizontal size={15} /></button>
                   </td>
