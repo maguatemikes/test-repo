@@ -6,9 +6,6 @@ import { useState, useEffect } from "react";
 type SegRow = { id: string; name: string; rules: string[]; count: number; status: string };
 type Member = { name: string; email: string; spend: string; lastOrder: string };
 
-// Builder member preview is a separate (future) feature; placeholder for now.
-const segmentMembers: Member[] = [];
-
 const statusConfig: Record<string, { bg: string; color: string; dot: string; label: string }> = {
   ready: { bg: "#F0FDF4", color: "#15803D", dot: "#22C55E", label: "Ready" },
   stale: { bg: "#FFF7ED", color: "#C2410C", dot: "#F97316", label: "Stale" },
@@ -17,7 +14,36 @@ const statusConfig: Record<string, { bg: string; color: string; dot: string; lab
 
 type RuleGroup = { type: "AND" | "OR"; conditions: string[] };
 
-const FACETS = ["Total Revenue", "Last Order Date", "Customer LTV", "Tag", "Source", "Email Opens (last 90d)", "Last Engagement", "Total Orders", "Created Date"];
+const FACETS = ["Total Revenue", "Last Order Date", "Customer LTV", "Source", "Last Engagement", "Total Orders", "Created Date"];
+
+type Condition = { id: number; facet: string; op: string; value: string; join: string };
+
+const FACET_FIELD: Record<string, string> = {
+  "Total Revenue": "lifetime_spend", "Customer LTV": "lifetime_spend", "Total Orders": "order_count",
+  "Last Order Date": "last_order_at", "Created Date": "created_at", "Source": "source", "Last Engagement": "last_engagement_at",
+};
+const OP_MAP: Record<string, string> = {
+  ">": "gt", "<": "lt", "=": "eq", ">=": "gte", "<=": "lte",
+  "within last": "within_days", "not within": "older_than_days", "is": "eq", "is not": "ne",
+};
+
+/** Translate the builder's condition rows into a rule tree the API can evaluate. */
+function conditionsToRule(conditions: Condition[]) {
+  const rules = conditions
+    .map((c) => {
+      const field = FACET_FIELD[c.facet];
+      const op = OP_MAP[c.op];
+      if (!field || !op) return null;
+      let value: string | number;
+      if (op === "within_days" || op === "older_than_days") value = parseInt(String(c.value), 10) || 0;
+      else if (field === "source") value = String(c.value).trim();
+      else { const n = Number(c.value); value = Number.isNaN(n) ? String(c.value) : n; }
+      return { field, op, value };
+    })
+    .filter(Boolean);
+  const anyOr = conditions.slice(1).some((c) => c.join === "OR");
+  return { op: anyOr ? "OR" : "AND", rules } as { op: "AND" | "OR"; rules: { field: string; op: string; value: string | number }[] };
+}
 
 export function SegmentsView() {
   const [openSegment, setOpenSegment] = useState<string | null>(null);
@@ -28,16 +54,17 @@ export function SegmentsView() {
   const [members, setMembers] = useState<Member[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
 
-  // Load real segments with live counts.
-  useEffect(() => {
-    let active = true;
+  const loadSegments = () => {
+    setLoading(true);
     fetch("/api/segments")
       .then((r) => r.json())
-      .then((d) => { if (active) setSegments(d.segments || []); })
+      .then((d) => setSegments(d.segments || []))
       .catch(() => {})
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, []);
+      .finally(() => setLoading(false));
+  };
+  // Load real segments with live counts on mount.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadSegments(); }, []);
 
   // Load real member preview when a segment is opened.
   useEffect(() => {
@@ -56,7 +83,7 @@ export function SegmentsView() {
   const selectedSegment = segments.find((s) => s.id === openSegment);
 
   if (building) {
-    return <SegmentBuilder onBack={() => setBuilding(false)} />;
+    return <SegmentBuilder onBack={() => setBuilding(false)} onSaved={() => { setBuilding(false); loadSegments(); }} />;
   }
 
   if (openSegment && selectedSegment) {
@@ -247,13 +274,44 @@ export function SegmentsView() {
   );
 }
 
-function SegmentBuilder({ onBack }: { onBack: () => void }) {
-  const [conditions, setConditions] = useState([
+function SegmentBuilder({ onBack, onSaved }: { onBack: () => void; onSaved: () => void }) {
+  const [name, setName] = useState("");
+  const [conditions, setConditions] = useState<Condition[]>([
     { id: 1, facet: "Total Revenue", op: ">", value: "500", join: "AND" },
-    { id: 2, facet: "Last Order Date", op: "within last", value: "30 days", join: "AND" },
+    { id: 2, facet: "Last Order Date", op: "within last", value: "30", join: "AND" },
   ]);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [count] = useState(4210);
+  const [count, setCount] = useState<number | null>(null);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [previewing, setPreviewing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Live preview — re-evaluate against the DB whenever conditions change (debounced).
+  useEffect(() => {
+    const rule = conditionsToRule(conditions);
+    if (!rule.rules.length) { setCount(0); setMembers([]); return; }
+    setPreviewing(true);
+    const t = setTimeout(() => {
+      fetch("/api/segments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rule }) })
+        .then((r) => r.json())
+        .then((d) => { setCount(d.count ?? 0); setMembers(d.members || []); })
+        .catch(() => {})
+        .finally(() => setPreviewing(false));
+    }, 400);
+    return () => clearTimeout(t);
+  }, [conditions]);
+
+  const save = async () => {
+    const rule = conditionsToRule(conditions);
+    if (!name.trim() || !rule.rules.length || saving) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/segments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, rule, save: true }) });
+      const d = await res.json();
+      if (d.ok) onSaved();
+      else alert(d.error || "Failed to save segment");
+    } finally { setSaving(false); }
+  };
 
   const addCondition = () => {
     setConditions((prev) => [...prev, { id: Date.now(), facet: "Total Revenue", op: ">", value: "0", join: "AND" }]);
@@ -272,8 +330,7 @@ function SegmentBuilder({ onBack }: { onBack: () => void }) {
           <span style={{ color: "#CBD5E1" }}>|</span>
           <span style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>New Segment</span>
           <div className="flex-1" />
-          <button style={{ fontSize: 12, color: "#64748B", padding: "5px 12px", border: "1px solid var(--border)", borderRadius: 6 }}>Save as New</button>
-          <button style={{ fontSize: 12, color: "#FFFFFF", background: "#2563EB", padding: "5px 14px", border: "none", borderRadius: 6, fontWeight: 500 }}>Save Segment</button>
+          <button onClick={save} disabled={saving || !name.trim()} style={{ fontSize: 12, color: "#FFFFFF", background: saving || !name.trim() ? "#94A3B8" : "#2563EB", padding: "5px 14px", border: "none", borderRadius: 6, fontWeight: 500, cursor: saving || !name.trim() ? "not-allowed" : "pointer" }}>{saving ? "Saving…" : "Save Segment"}</button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
@@ -281,6 +338,8 @@ function SegmentBuilder({ onBack }: { onBack: () => void }) {
           <div className="rounded-xl p-5" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
             <label style={{ fontSize: 12, fontWeight: 500, color: "#64748B", display: "block", marginBottom: 6 }}>Segment Name</label>
             <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               placeholder="e.g. High-value recent buyers"
               style={{ width: "100%", fontSize: 14, fontWeight: 500, padding: "8px 12px", border: "1px solid var(--border)", borderRadius: 6, outline: "none", color: "#0F172A" }}
             />
@@ -345,7 +404,7 @@ function SegmentBuilder({ onBack }: { onBack: () => void }) {
             <div>
               <p style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: "0.04em" }}>LIVE COUNT PREVIEW</p>
               <div className="flex items-baseline gap-2 mt-1">
-                <span style={{ fontSize: 28, fontWeight: 600, color: "#0F172A", fontFamily: "JetBrains Mono, monospace" }}>{count.toLocaleString()}</span>
+                <span style={{ fontSize: 28, fontWeight: 600, color: "#0F172A", fontFamily: "JetBrains Mono, monospace" }}>{previewing ? "…" : (count ?? 0).toLocaleString()}</span>
                 <span style={{ fontSize: 13, color: "#64748B" }}>contacts match your rules</span>
               </div>
             </div>
@@ -372,8 +431,10 @@ function SegmentBuilder({ onBack }: { onBack: () => void }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {segmentMembers.map((m, i) => (
-                    <tr key={m.email} style={{ borderBottom: i < segmentMembers.length - 1 ? "1px solid #F8FAFC" : "none" }}>
+                  {members.length === 0 ? (
+                    <tr><td colSpan={3} style={{ padding: "20px 14px", textAlign: "center", fontSize: 12, color: "#94A3B8" }}>No matching members</td></tr>
+                  ) : members.map((m, i) => (
+                    <tr key={m.email} style={{ borderBottom: i < members.length - 1 ? "1px solid #F8FAFC" : "none" }}>
                       <td style={{ padding: "10px 14px" }}>
                         <div className="flex items-center gap-2.5">
                           <div className="rounded-full flex items-center justify-center text-white"

@@ -3,7 +3,7 @@
  * Segments are rule-based audiences. Rules are evaluated ON-THE-FLY against
  * crm_customers (read-only) — no membership is materialized.
  */
-import { and, count, desc, eq, gt, gte, lt, lte, or, sql, type SQL, type AnyColumn } from "drizzle-orm";
+import { and, count, desc, eq, ne, gt, gte, lt, lte, or, sql, type SQL, type AnyColumn } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { segments, customers } from "@/lib/db/schema";
 
@@ -38,10 +38,37 @@ function ruleToCondition(node: Rule | RuleGroup): SQL | undefined {
     case "lt": return lt(col, node.value as never);
     case "lte": return lte(col, node.value as never);
     case "eq": return eq(col, node.value as never);
+    case "ne": return ne(col, node.value as never);
     case "within_days": return sql`${col} >= (NOW() - INTERVAL ${Number(node.value)} DAY)`;
     case "older_than_days": return sql`${col} < (NOW() - INTERVAL ${Number(node.value)} DAY)`;
     default: return undefined;
   }
+}
+
+// ---------- human-readable rule display ----------
+const FIELD_LABEL: Record<string, string> = {
+  lifetime_spend: "Lifetime Spend", order_count: "Total Orders", last_order_at: "Last Order",
+  created_at: "Created", source: "Source", primary_channel: "Channel",
+  is_subscribed: "Subscribed", last_engagement_at: "Last Engagement",
+};
+const OP_LABEL: Record<string, string> = { gt: ">", gte: "≥", lt: "<", lte: "≤", eq: "is", ne: "is not" };
+
+function ruleLine(r: Rule): string {
+  const f = FIELD_LABEL[r.field] ?? r.field;
+  if (r.op === "within_days") return `${f} within ${r.value} days`;
+  if (r.op === "older_than_days") return `${f} older than ${r.value} days`;
+  const v = r.field === "lifetime_spend" ? `$${Number(r.value).toLocaleString()}` : r.value;
+  return `${f} ${OP_LABEL[r.op] ?? r.op} ${v}`;
+}
+
+/** Turn a stored rule tree into display strings (subsequent OR rows get an "OR: " prefix). */
+export function ruleToDisplay(group: RuleGroup): string[] {
+  const out: string[] = [];
+  (group.rules || []).forEach((node, i) => {
+    const text = "rules" in node ? "(group)" : ruleLine(node);
+    out.push(i > 0 && group.op === "OR" ? `OR: ${text}` : text);
+  });
+  return out.length ? out : ["All contacts"];
 }
 
 /** Live count of customers matching a rule. */
