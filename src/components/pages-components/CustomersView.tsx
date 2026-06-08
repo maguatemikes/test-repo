@@ -1,7 +1,7 @@
 "use client";
 
 import { Search, Upload, Download, MoreHorizontal, Star, AlertTriangle, UserPlus, RefreshCw, X, ShoppingBag, Mail, MapPin, Activity, ChevronRight, Package, SlidersHorizontal } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ListsView } from "./ListsView";
 import { SegmentsView } from "./SegmentsView";
 import { ImportCsvModal } from "../ImportCsvModal";
@@ -411,6 +411,17 @@ export function CustomersView({
       try { localStorage.setItem("crm_cust_cols", JSON.stringify(next)); } catch {}
       return next;
     });
+
+  // Close the Columns dropdown when clicking outside it.
+  const colsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!colsOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (colsRef.current && !colsRef.current.contains(e.target as Node)) setColsOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [colsOpen]);
   const [selected, setSelected] = useState<string[]>([]);
   const [drawerCustomer, setDrawerCustomer] = useState<typeof mockCustomers[0] | null>(null);
   const [csvModalOpen, setCsvModalOpen] = useState(false);
@@ -548,7 +559,7 @@ export function CustomersView({
         <div className="flex-1" />
 
         {/* Columns show/hide */}
-        <div style={{ position: "relative" }}>
+        <div ref={colsRef} style={{ position: "relative" }}>
           <button onClick={() => setColsOpen((o) => !o)} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5"
             style={{ fontSize: 12, background: "#FFFFFF", border: "1px solid var(--border)", color: "#64748B", fontFamily: font, cursor: "pointer" }}>
             <SlidersHorizontal size={13} /> Columns
