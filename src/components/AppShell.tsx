@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
+import { SessionExpiredModal } from "@/components/SessionExpiredModal";
 import {
   pathToSection,
   pathToCustomerSubTab,
@@ -94,6 +95,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+
+      <SessionExpiredModal />
     </div>
   );
 }

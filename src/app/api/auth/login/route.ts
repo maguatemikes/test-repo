@@ -65,8 +65,16 @@ export async function POST(req: Request) {
   }
 
   if (upstream.ok) {
-    const res = NextResponse.json({ ok: true });
-    // Relay the session cookie(s) the backend set.
+    // The backend may signal that a second factor is still required, in which
+    // case it sets a short-lived pending-2FA cookie instead of a full session.
+    const data = (await upstream.json().catch(() => null)) as
+      | { twoFactorRequired?: boolean }
+      | null;
+    const res = NextResponse.json({
+      ok: true,
+      twoFactor: data?.twoFactorRequired === true,
+    });
+    // Relay the cookie(s) the backend set (session, or pending-2FA token).
     const setCookie = upstream.headers.get("set-cookie");
     if (setCookie) res.headers.set("set-cookie", setCookie);
     return res;

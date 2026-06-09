@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { setLastEmail } from "@/lib/sessionExpiry";
 
 /**
  * Error categories the login form renders distinctly. These mirror the `code`
@@ -45,6 +46,7 @@ export function LoginView() {
     if (submitting) return;
     setError(null);
     setSubmitting(true);
+    setLastEmail(email.trim()); // remembered for the session-expiry modal prefill
 
     try {
       const res = await fetch("/api/auth/login", {
@@ -54,13 +56,18 @@ export function LoginView() {
       });
 
       const data = (await res.json().catch(() => null)) as
-        | { ok: boolean; code?: LoginErrorCode; error?: string }
+        | { ok: boolean; code?: LoginErrorCode; error?: string; twoFactor?: boolean }
         | null;
 
       if (res.ok && data?.ok) {
-        // Acceptance: existing user lands on the dashboard (index route).
-        router.push("/");
-        router.refresh();
+        if (data.twoFactor) {
+          // Second factor required before a session is granted.
+          router.push("/login/2fa");
+        } else {
+          // Acceptance: existing user lands on the dashboard (index route).
+          router.push("/");
+          router.refresh();
+        }
         return;
       }
 

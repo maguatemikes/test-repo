@@ -268,7 +268,7 @@ export function TopBar({ active, onNavigate, onAction, onMenuClick }: TopBarProp
               <span className="rounded-full px-2 py-0.5 mt-1 inline-block" style={{ fontSize: 10, fontWeight: 600, background: "#7C3AED", color: "#fff" }}>Super Admin</span>
             </div>
             {[
-              { icon: User, label: "Profile", action: () => { onNavigate("settings"); setUserOpen(false); } },
+              { icon: User, label: "Profile", action: () => { router.push("/settings/account"); setUserOpen(false); } },
               { icon: Settings, label: "Settings", action: () => { onNavigate("settings"); setUserOpen(false); } },
               { icon: HelpCircle, label: "Help & Support", action: () => setUserOpen(false) },
             ].map(({ icon: Icon, label, action }) => (
