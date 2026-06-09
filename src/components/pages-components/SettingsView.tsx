@@ -47,9 +47,42 @@ export function SettingsView() {
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
 
+  // Invite teammate (→ crm-api POST /api/invites via our proxy)
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("marketing_manager");
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+
   const showSave = (label = "Changes saved") => {
     setSaveToast(label);
     setTimeout(() => setSaveToast(null), 2500);
+  };
+
+  const sendInvite = async () => {
+    setInviteError(null);
+    const email = inviteEmail.trim();
+    if (!email.includes("@")) { setInviteError("Enter a valid email address."); return; }
+    setInviteBusy(true);
+    try {
+      const res = await fetch("/api/team/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, role: inviteRole }),
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setInviteOpen(false);
+        setInviteEmail("");
+        showSave(`Invite sent to ${email}`);
+      } else {
+        setInviteError(d.error || "Failed to send invite.");
+      }
+    } catch {
+      setInviteError("Could not send invite.");
+    } finally {
+      setInviteBusy(false);
+    }
   };
 
   return (
@@ -62,6 +95,44 @@ export function SettingsView() {
           display: "flex", alignItems: "center", gap: 8,
         }}>
           <span style={{ color: "#34D399" }}>✓</span> {saveToast}
+        </div>
+      )}
+
+      {inviteOpen && (
+        <div onClick={() => setInviteOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.4)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#FFFFFF", borderRadius: 12, padding: 24, width: 420, maxWidth: "90vw", boxShadow: "0 20px 60px rgba(0,0,0,0.25)", fontFamily: font }}>
+            <h3 style={{ fontSize: 15, fontWeight: 600, color: "#0F172A", marginBottom: 4 }}>Invite teammate</h3>
+            <p style={{ fontSize: 12, color: "#64748B", marginBottom: 16 }}>They&#39;ll receive an email with a link to join. The invite expires in 7 days.</p>
+
+            <label style={{ fontSize: 12, fontWeight: 500, color: "#64748B", display: "block", marginBottom: 6 }}>Email</label>
+            <input
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              placeholder="teammate@company.com"
+              autoFocus
+              style={{ width: "100%", fontSize: 13, padding: "8px 12px", border: "1px solid var(--border)", borderRadius: 6, outline: "none", color: "#0F172A" }}
+            />
+
+            <label style={{ fontSize: 12, fontWeight: 500, color: "#64748B", display: "block", margin: "12px 0 6px" }}>Role</label>
+            <select
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value)}
+              style={{ width: "100%", fontSize: 13, padding: "8px 12px", border: "1px solid var(--border)", borderRadius: 6, color: "#0F172A", background: "#FFFFFF" }}
+            >
+              <option value="admin">Admin</option>
+              <option value="marketing_manager">Marketing Manager</option>
+              <option value="analyst">Analyst</option>
+              <option value="read_only">Read Only</option>
+              <option value="super_admin">Super Admin</option>
+            </select>
+
+            {inviteError && <p style={{ fontSize: 12, color: "#DC2626", marginTop: 10 }}>{inviteError}</p>}
+
+            <div className="flex justify-end gap-2" style={{ marginTop: 18 }}>
+              <button onClick={() => setInviteOpen(false)} style={{ fontSize: 12, fontWeight: 500, color: "#64748B", background: "#FFFFFF", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 14px", cursor: "pointer" }}>Cancel</button>
+              <button onClick={sendInvite} disabled={inviteBusy} style={{ fontSize: 12, fontWeight: 500, color: "#FFFFFF", background: inviteBusy ? "#94A3B8" : "#2563EB", border: "none", borderRadius: 6, padding: "8px 16px", cursor: inviteBusy ? "not-allowed" : "pointer" }}>{inviteBusy ? "Sending…" : "Send invite"}</button>
+            </div>
+          </div>
         </div>
       )}
       {/* Settings nav */}
@@ -132,8 +203,9 @@ export function SettingsView() {
                 <p style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>Manage team access and permissions</p>
               </div>
               <button
+                onClick={() => { setInviteError(null); setInviteOpen(true); }}
                 className="flex items-center gap-1.5 rounded-lg px-3 py-2"
-                style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF" }}
+                style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF", cursor: "pointer" }}
               >
                 <Plus size={13} />
                 Invite Teammate
