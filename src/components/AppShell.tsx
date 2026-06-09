@@ -23,8 +23,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setMobileNavOpen(false);
   }, [pathname]);
 
-  // Public, embeddable routes (hosted forms) render standalone — no dashboard chrome.
-  const isStandalone = pathname?.startsWith("/f/") ?? false;
+  // Public routes render standalone — no dashboard chrome.
+  //   /f/...  → hosted, embeddable forms
+  //   auth    → login and the rest of the Phase-1 auth flow
+  const AUTH_PREFIXES = [
+    "/login",
+    "/signup",
+    "/forgot-password",
+    "/reset",
+    "/verify",
+    "/invite",
+  ];
+  const isStandalone =
+    (pathname?.startsWith("/f/") ?? false) ||
+    AUTH_PREFIXES.some((p) => pathname?.startsWith(p));
   if (isStandalone) {
     return <>{children}</>;
   }

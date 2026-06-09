@@ -1,5 +1,6 @@
-import { Search, Bell, ChevronDown, Plus, X, CheckCircle2, AlertCircle, Info, User, Settings, LogOut, HelpCircle, Menu } from "lucide-react";
+import { Search, Bell, ChevronDown, Plus, X, CheckCircle2, AlertCircle, Info, User, Settings, LogOut, HelpCircle, Menu, Loader2 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 const navTitles: Record<string, string> = {
   dashboard: "Dashboard", customers: "Customers", campaigns: "Campaigns",
@@ -62,6 +63,9 @@ export function TopBar({ active, onNavigate, onAction, onMenuClick }: TopBarProp
   const [notifOpen, setNotifOpen]           = useState(false);
   const [userOpen, setUserOpen]             = useState(false);
   const [notifs, setNotifs]                 = useState(notifications);
+  const [logoutOpen, setLogoutOpen]         = useState(false);
+  const [loggingOut, setLoggingOut]         = useState(false);
+  const router = useRouter();
 
   const searchRef = useRef<HTMLDivElement>(null!);
   const notifRef  = useRef<HTMLDivElement>(null!);
@@ -78,6 +82,19 @@ export function TopBar({ active, onNavigate, onAction, onMenuClick }: TopBarProp
 
   const action = primaryActions[active];
   const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // Ignore — we redirect to /login regardless.
+    } finally {
+      router.push("/login");
+      router.refresh();
+    }
+  }
 
   return (
     <header
@@ -265,7 +282,9 @@ export function TopBar({ active, onNavigate, onAction, onMenuClick }: TopBarProp
               </button>
             ))}
             <div style={{ borderTop: "1px solid var(--border)" }}>
-              <button className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left"
+              <button
+                onClick={() => { setUserOpen(false); setLogoutOpen(true); }}
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left"
                 style={{ fontSize: 12, color: "#DC2626" }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "#FFF1F2")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
@@ -286,6 +305,44 @@ export function TopBar({ active, onNavigate, onAction, onMenuClick }: TopBarProp
         >
           <Plus size={13} /><span className="hidden sm:inline">{action}</span>
         </button>
+      )}
+
+      {/* Logout confirmation (#61) */}
+      {logoutOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => { if (!loggingOut) setLogoutOpen(false); }}
+          style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: 360, maxWidth: "100%", background: "#FFFFFF", borderRadius: 12, boxShadow: "0 16px 48px rgba(0,0,0,0.18)", padding: 24 }}
+          >
+            <h2 style={{ fontSize: 16, fontWeight: 600, color: "#0F172A", marginBottom: 6 }}>Sign out?</h2>
+            <p style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>
+              Your session will end and you will be returned to the sign-in page.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setLogoutOpen(false)}
+                disabled={loggingOut}
+                style={{ fontSize: 13, fontWeight: 500, color: "#374151", background: "#F8FAFC", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 14px", cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="flex items-center gap-1.5"
+                style={{ fontSize: 13, fontWeight: 500, color: "#FFFFFF", background: "#DC2626", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer" }}
+              >
+                {loggingOut && <Loader2 size={13} className="animate-spin" />}
+                {loggingOut ? "Signing out…" : "Sign out"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </header>
   );
