@@ -35,8 +35,9 @@ export function installSessionExpiryInterceptor() {
     const res = await original(input, init);
     try {
       const url = urlOf(input);
-      // Ignore the auth endpoints so re-login itself can't retrigger the modal.
-      const isAuthCall = url.includes("/api/auth/");
+      // Ignore the auth endpoints (so re-login can't retrigger the modal) and
+      // the /api/me probe (its 401 just means "not logged in", handled inline).
+      const isAuthCall = url.includes("/api/auth/") || url.includes("/api/me");
       if (res.status === 401 && !isAuthCall) {
         window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
       }

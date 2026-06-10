@@ -1,6 +1,7 @@
 import { Search, Bell, ChevronDown, Plus, X, CheckCircle2, AlertCircle, Info, User, Settings, LogOut, HelpCircle, Menu, Loader2 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useCurrentUser } from "@/components/SessionProvider";
 
 const navTitles: Record<string, string> = {
   dashboard: "Dashboard", customers: "Customers", campaigns: "Campaigns",
@@ -82,6 +83,21 @@ export function TopBar({ active, onNavigate, onAction, onMenuClick }: TopBarProp
 
   const action = primaryActions[active];
   const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
+
+  const { user } = useCurrentUser();
+  const displayName = user?.name || "Account";
+  const firstName = displayName.split(" ")[0];
+  const displayEmail = user?.email || "";
+  const role = user?.role
+    ? user.role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : undefined;
+  const initials =
+    (user?.name || "")
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0]?.toUpperCase() ?? "")
+      .join("") || "?";
 
   async function handleLogout() {
     if (loggingOut) return;
@@ -251,8 +267,8 @@ export function TopBar({ active, onNavigate, onAction, onMenuClick }: TopBarProp
           style={{ height: 34, padding: "0 10px 0 6px", background: userOpen ? "#EFF6FF" : "#F8FAFC", border: `1px solid ${userOpen ? "#BFDBFE" : "var(--border)"}` }}
         >
           <div className="rounded-full flex items-center justify-center text-white"
-            style={{ width: 22, height: 22, background: "#2563EB", fontSize: 10, fontWeight: 600 }}>RN</div>
-          <span className="hidden sm:inline" style={{ fontSize: 12, fontWeight: 500, color: "#0F172A" }}>Ryan</span>
+            style={{ width: 22, height: 22, background: "#2563EB", fontSize: 10, fontWeight: 600 }}>{initials}</div>
+          <span className="hidden sm:inline" style={{ fontSize: 12, fontWeight: 500, color: "#0F172A" }}>{firstName}</span>
           <ChevronDown size={12} color="#94A3B8" className="hidden sm:inline" style={{ transform: userOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
         </button>
 
@@ -263,9 +279,11 @@ export function TopBar({ active, onNavigate, onAction, onMenuClick }: TopBarProp
             boxShadow: "0 8px 24px rgba(0,0,0,0.10)", zIndex: 50, overflow: "hidden",
           }}>
             <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
-              <p style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>Ryan Nguyen</p>
-              <p style={{ fontSize: 11, color: "#64748B" }}>ryan@acmecorp.io</p>
-              <span className="rounded-full px-2 py-0.5 mt-1 inline-block" style={{ fontSize: 10, fontWeight: 600, background: "#7C3AED", color: "#fff" }}>Super Admin</span>
+              <p style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>{displayName}</p>
+              <p style={{ fontSize: 11, color: "#64748B" }}>{displayEmail}</p>
+              {role && (
+                <span className="rounded-full px-2 py-0.5 mt-1 inline-block" style={{ fontSize: 10, fontWeight: 600, background: "#7C3AED", color: "#fff" }}>{role}</span>
+              )}
             </div>
             {[
               { icon: User, label: "Profile", action: () => { router.push("/settings/account"); setUserOpen(false); } },

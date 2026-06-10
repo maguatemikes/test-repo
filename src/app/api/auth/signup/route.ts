@@ -37,7 +37,8 @@ export async function POST(req: Request) {
   if (!/^[a-z0-9-]{2,}$/.test(orgSlug))
     return fail("invalid", "Invalid workspace URL.", 400);
 
-  const call = await callNetx("/auth/signup", { email, password, orgName, orgSlug });
+  // Backend SignupRequest is { email, password, orgName } — slug is derived server-side.
+  const call = await callNetx("/auth/signup", { email, password, orgName });
   if (!call.ok) return call.response;
 
   const { upstream } = call;

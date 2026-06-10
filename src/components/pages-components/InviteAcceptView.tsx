@@ -14,7 +14,7 @@ interface Invite {
   orgName: string;
   role: string;
   email?: string;
-  userExists?: boolean;
+  isExistingUser?: boolean;
 }
 
 function prettyRole(role?: string) {
@@ -60,13 +60,13 @@ export function InviteAcceptView({ token }: { token: string }) {
     if (submitting) return;
     setError(null);
 
-    if (!invite?.userExists && name.trim().length < 2) {
+    if (!invite?.isExistingUser && name.trim().length < 2) {
       setError("Please enter your name.");
       return;
     }
     if (password.length < 8) {
       setError(
-        invite?.userExists
+        invite?.isExistingUser
           ? "Enter your password to continue."
           : "Password must be at least 8 characters.",
       );
@@ -79,7 +79,7 @@ export function InviteAcceptView({ token }: { token: string }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: invite?.userExists ? undefined : name.trim(),
+          name: invite?.isExistingUser ? undefined : name.trim(),
           password,
         }),
       });
@@ -135,7 +135,7 @@ export function InviteAcceptView({ token }: { token: string }) {
     );
   }
 
-  const existing = invite.userExists;
+  const existing = invite.isExistingUser;
 
   return (
     <AuthLayout

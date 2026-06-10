@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { callNetx, fail, relaySessionCookie } from "@/lib/authProxy";
 
 export const dynamic = "force-dynamic";
 
+const CHALLENGE_COOKIE = "crm_2fa_challenge";
+
 /**
  * POST /api/auth/2fa/verify
- * Completes a login that requires 2FA. Accepts either a TOTP `code` or a
- * one-time `recoveryCode`; on success the backend upgrades the pending login
- * to a full session, which we relay.
+ * Completes a login that requires 2FA. The `challengeToken` was issued by the
+ * login step and stored in a first-party httpOnly cookie; we read it here and
+ * send `{ challengeToken, code }` to the backend. On success the backend issues
+ * the real session, which we relay (and we clear the challenge cookie).
  */
 export async function POST(req: Request) {
   let code: string | undefined;
@@ -24,17 +28,28 @@ export async function POST(req: Request) {
   if (!code && !recoveryCode)
     return fail("invalid", "Enter your verification code.", 400);
 
+  const challengeToken = (await cookies()).get(CHALLENGE_COOKIE)?.value;
+  if (!challengeToken) {
+    return fail(
+      "expired",
+      "Your verification session expired. Please sign in again.",
+      401,
+    );
+  }
+
   const call = await callNetx("/auth/2fa/verify", {
+    challengeToken,
     code,
     recoveryCode,
-    // Forward the pending-2FA cookie the login step set.
-    cookie: req.headers.get("cookie") ?? undefined,
   });
   if (!call.ok) return call.response;
 
   const { upstream } = call;
   if (upstream.ok) {
-    return relaySessionCookie(upstream, NextResponse.json({ ok: true }));
+    const res = NextResponse.json({ ok: true });
+    relaySessionCookie(upstream, res);
+    res.cookies.set(CHALLENGE_COOKIE, "", { path: "/", maxAge: 0 }); // clear
+    return res;
   }
   return fail("invalid", "That code is incorrect. Please try again.", 401);
 }

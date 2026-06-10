@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { useCurrentUser } from "@/components/SessionProvider";
 import Link from "next/link";
 import { Loader2, ShieldCheck, Upload } from "lucide-react";
 
@@ -9,11 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AuthError, AuthNotice } from "@/components/pages-components/AuthLayout";
-
-interface AccountSettingsViewProps {
-  initialName?: string;
-  initialEmail?: string;
-}
 
 function initialsOf(name: string) {
   return (
@@ -26,15 +22,22 @@ function initialsOf(name: string) {
   );
 }
 
-export function AccountSettingsView({
-  initialName = "",
-  initialEmail = "",
-}: AccountSettingsViewProps) {
+export function AccountSettingsView() {
   const router = useRouter();
+  const { user, refresh } = useCurrentUser();
 
-  // Profile
-  const [name, setName] = useState(initialName);
-  const [email, setEmail] = useState(initialEmail);
+  // Profile — seeded from the signed-in user once /api/me resolves.
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [seeded, setSeeded] = useState(false);
+
+  useEffect(() => {
+    if (user && !seeded) {
+      setName(user.name);
+      setEmail(user.email);
+      setSeeded(true);
+    }
+  }, [user, seeded]);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarData, setAvatarData] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -50,7 +53,7 @@ export function AccountSettingsView({
   const [pwErr, setPwErr] = useState<string | null>(null);
   const [pwDone, setPwDone] = useState(false);
 
-  const emailChanged = email.trim() !== initialEmail;
+  const emailChanged = email.trim() !== (user?.email ?? "");
 
   function onPickAvatar(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -93,8 +96,8 @@ export function AccountSettingsView({
             ? "Saved. Check your new email for a verification link."
             : "Your profile has been updated.",
         );
-        // Acceptance: name update reflects in the topbar.
-        router.refresh();
+        // Acceptance: name update reflects in the topbar (re-fetch /api/me).
+        await refresh();
       } else {
         setProfileErr(data?.error ?? "Could not save your profile.");
       }

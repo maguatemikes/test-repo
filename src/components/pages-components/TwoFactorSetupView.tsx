@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, ShieldCheck, Copy, Download, Check } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   InputOTP,
   InputOTPGroup,
@@ -26,6 +28,8 @@ export function TwoFactorSetupView() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [ack, setAck] = useState(false);
+  const router = useRouter();
 
   async function beginSetup() {
     setLoading(true);
@@ -95,6 +99,7 @@ export function TwoFactorSetupView() {
     a.download = "crm-recovery-codes.txt";
     a.click();
     URL.revokeObjectURL(url);
+    setAck(true); // downloading counts as acknowledging
   }
 
   return (
@@ -220,6 +225,19 @@ export function TwoFactorSetupView() {
               Download
             </Button>
           </div>
+
+          <label className="flex items-start gap-2 text-sm text-foreground">
+            <Checkbox
+              checked={ack}
+              onCheckedChange={(v) => setAck(v === true)}
+              className="mt-0.5"
+            />
+            I have saved my recovery codes somewhere safe.
+          </label>
+
+          <Button disabled={!ack} onClick={() => router.push("/settings/account")}>
+            Finish
+          </Button>
         </section>
       )}
     </div>

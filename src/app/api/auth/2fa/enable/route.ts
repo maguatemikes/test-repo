@@ -20,7 +20,9 @@ export async function POST(req: Request) {
   if (!/^\d{6}$/.test(code))
     return fail("invalid", "Enter the 6-digit code from your app.", 400);
 
-  const call = await callNetx("/auth/2fa/enable", { code });
+  const call = await callNetx("/auth/2fa/enable", { code }, {
+    cookie: req.headers.get("cookie"), // authenticated endpoint
+  });
   if (!call.ok) return call.response;
 
   const { upstream } = call;

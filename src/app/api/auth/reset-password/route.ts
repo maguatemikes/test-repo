@@ -23,7 +23,8 @@ export async function POST(req: Request) {
   if (password.length < 8)
     return fail("invalid", "Password must be at least 8 characters.", 400);
 
-  const call = await callNetx("/auth/reset-password", { token, password });
+  // Backend ResetRequest is { token, newPassword }.
+  const call = await callNetx("/auth/reset", { token, newPassword: password });
   if (!call.ok) return call.response;
 
   const { upstream } = call;

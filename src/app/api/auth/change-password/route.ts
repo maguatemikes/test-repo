@@ -26,10 +26,11 @@ export async function POST(req: Request) {
   if (newPassword.length < 8)
     return fail("invalid", "New password must be at least 8 characters.", 400);
 
-  const call = await callNetx("/auth/change-password", {
-    currentPassword,
-    newPassword,
-  });
+  const call = await callNetx(
+    "/auth/change-password",
+    { currentPassword, newPassword },
+    { cookie: req.headers.get("cookie") }, // authenticated endpoint
+  );
   if (!call.ok) return call.response;
 
   if (call.upstream.ok) return NextResponse.json({ ok: true });

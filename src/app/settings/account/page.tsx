@@ -7,6 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function AccountSettingsPage() {
-  // TODO: hydrate from the authenticated session once wired.
-  return <AccountSettingsView initialName="Ryan Nguyen" initialEmail="ryan@acmecorp.io" />;
+  return <AccountSettingsView />;
 }

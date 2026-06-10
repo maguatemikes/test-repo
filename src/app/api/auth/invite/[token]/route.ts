@@ -21,7 +21,7 @@ export async function GET(
   let upstream: Response;
   try {
     upstream = await fetch(
-      `${API_BASE}/auth/invite/${encodeURIComponent(token)}`,
+      `${API_BASE}/invites/accept/${encodeURIComponent(token)}`,
       { redirect: "manual" },
     );
   } catch {
@@ -61,7 +61,10 @@ export async function POST(
   if (password.length < 8)
     return fail("invalid", "Password must be at least 8 characters.", 400);
 
-  const call = await callNetx("/auth/accept-invite", { token, name, password });
+  const call = await callNetx(
+    `/invites/accept/${encodeURIComponent(token)}`,
+    { name, password },
+  );
   if (!call.ok) return call.response;
 
   const { upstream } = call;

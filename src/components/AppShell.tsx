@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 import { SessionExpiredModal } from "@/components/SessionExpiredModal";
+import { SessionProvider } from "@/components/SessionProvider";
 import {
   pathToSection,
   pathToCustomerSubTab,
@@ -67,6 +68,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     active === "automations" || active === "forms" || active === "settings";
 
   return (
+    <SessionProvider>
     <div
       className="flex size-full"
       style={{ fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif", background: "var(--background)", overflow: "hidden" }}
@@ -98,5 +100,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <SessionExpiredModal />
     </div>
+    </SessionProvider>
   );
 }

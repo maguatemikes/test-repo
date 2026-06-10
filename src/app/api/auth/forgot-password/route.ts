@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     return fail("server", "Malformed request.", 400);
   }
 
-  const call = await callNetx("/auth/forgot-password", { email });
+  const call = await callNetx("/auth/forgot", { email });
   if (!call.ok) return call.response;
 
   // Normalize any upstream 4xx (e.g. unknown email) to a neutral success.

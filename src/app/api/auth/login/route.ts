@@ -36,7 +36,6 @@ export async function POST(req: Request) {
 
   const email = typeof body.email === "string" ? body.email.trim() : "";
   const password = typeof body.password === "string" ? body.password : "";
-  const rememberMe = body.rememberMe === true;
 
   if (!email || !password) {
     return bad("invalid_credentials", "Email and password are required.", 400);
@@ -56,7 +55,7 @@ export async function POST(req: Request) {
     upstream = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, rememberMe }),
+      body: JSON.stringify({ email, password }),
       // Internal service-to-service call; do not follow redirects silently.
       redirect: "manual",
     });
@@ -65,16 +64,28 @@ export async function POST(req: Request) {
   }
 
   if (upstream.ok) {
-    // The backend may signal that a second factor is still required, in which
-    // case it sets a short-lived pending-2FA cookie instead of a full session.
+    // Two success shapes:
+    //   no 2FA → { userId, orgId, role, emailVerified } and a session cookie
+    //   2FA    → { twoFactorRequired: true, challengeToken } and NO cookie
     const data = (await upstream.json().catch(() => null)) as
-      | { twoFactorRequired?: boolean }
+      | { twoFactorRequired?: boolean; challengeToken?: string }
       | null;
-    const res = NextResponse.json({
-      ok: true,
-      twoFactor: data?.twoFactorRequired === true,
-    });
-    // Relay the cookie(s) the backend set (session, or pending-2FA token).
+
+    if (data?.twoFactorRequired && data.challengeToken) {
+      // Stash the challengeToken in a short-lived, first-party, httpOnly cookie
+      // so /api/auth/2fa/verify can finish login without exposing it to JS.
+      const res = NextResponse.json({ ok: true, twoFactor: true });
+      res.cookies.set("crm_2fa_challenge", data.challengeToken, {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 600,
+      });
+      return res;
+    }
+
+    // Normal success — relay the session cookie the backend set.
+    const res = NextResponse.json({ ok: true, twoFactor: false });
     const setCookie = upstream.headers.get("set-cookie");
     if (setCookie) res.headers.set("set-cookie", setCookie);
     return res;

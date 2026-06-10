@@ -18,8 +18,15 @@ export type NetxCall =
   | { ok: true; upstream: Response }
   | { ok: false; response: NextResponse };
 
-/** POST a JSON payload to the NetX auth API. Handles config + network errors. */
-export async function callNetx(path: string, payload: unknown): Promise<NetxCall> {
+/**
+ * POST a JSON payload to the NetX auth API. Handles config + network errors.
+ * Pass `cookie` for authenticated endpoints so the session is forwarded.
+ */
+export async function callNetx(
+  path: string,
+  payload: unknown,
+  opts?: { cookie?: string | null; method?: string },
+): Promise<NetxCall> {
   if (!API_BASE) {
     return {
       ok: false,
@@ -27,9 +34,11 @@ export async function callNetx(path: string, payload: unknown): Promise<NetxCall
     };
   }
   try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (opts?.cookie) headers["cookie"] = opts.cookie;
     const upstream = await fetch(`${API_BASE}${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: opts?.method ?? "POST",
+      headers,
       body: JSON.stringify(payload),
       redirect: "manual",
     });
@@ -52,7 +61,8 @@ export function relaySessionCookie(from: Response, to: NextResponse) {
 /** Best-effort parse of an upstream JSON error body. */
 export async function readUpstreamReason(res: Response): Promise<string> {
   const body = (await res.json().catch(() => null)) as
-    | { reason?: string; message?: string }
+    | { code?: string; reason?: string; message?: string }
     | null;
-  return (body?.reason ?? body?.message ?? "").toLowerCase();
+  // Backend uses a machine-readable `code` (e.g. "email_taken"); fall back to text.
+  return (body?.code ?? body?.reason ?? body?.message ?? "").toLowerCase();
 }
