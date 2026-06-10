@@ -134,6 +134,32 @@ function CustomerDrawer({ customer, onClose }: { customer: typeof mockCustomers[
       .finally(() => { if (active) setOrdersLoading(false); });
     return () => { active = false; };
   }, [customer.id]);
+
+  // Manual tags (crm-api): the customer's tags + the org tag library.
+  const [manualTags, setManualTags] = useState<{ id: number; name: string; color: string }[]>([]);
+  const [allTags, setAllTags] = useState<{ id: number; name: string; color: string }[]>([]);
+  const [tagPickerOpen, setTagPickerOpen] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const reloadCustomerTags = () =>
+    fetch(`/api/customers/${encodeURIComponent(customer.id)}/tags`).then((r) => r.json()).then((d) => setManualTags(d.tags || [])).catch(() => {});
+  const reloadAllTags = () =>
+    fetch(`/api/tags`).then((r) => r.json()).then((d) => setAllTags(d.tags || [])).catch(() => {});
+  useEffect(() => { reloadCustomerTags(); reloadAllTags(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [customer.id]);
+  const attachTag = async (tagId: number) => {
+    await fetch(`/api/customers/${encodeURIComponent(customer.id)}/tags`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tagId }) });
+    setTagPickerOpen(false); reloadCustomerTags();
+  };
+  const detachTag = async (tagId: number) => {
+    await fetch(`/api/customers/${encodeURIComponent(customer.id)}/tags/${tagId}`, { method: "DELETE" });
+    reloadCustomerTags();
+  };
+  const createAndAttach = async () => {
+    const name = newTagName.trim();
+    if (!name) return;
+    const d = await fetch(`/api/tags`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }).then((r) => r.json()).catch(() => ({}));
+    if (d.ok && d.tag?.id) { setNewTagName(""); await attachTag(d.tag.id); reloadAllTags(); }
+  };
+
   const activity = drawerActivity[customer.id] || drawerActivity.default;
   const initials = customer.name.split(" ").map((n) => n[0]).join("");
   const fmtMoney = (n: number) => `$${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -202,6 +228,38 @@ function CustomerDrawer({ customer, onClose }: { customer: typeof mockCustomers[
           >
             <X size={16} />
           </button>
+        </div>
+
+        {/* Manual tags (crm-api) */}
+        <div className="px-5 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span style={{ fontSize: 10, fontWeight: 600, color: "#94A3B8", letterSpacing: "0.04em", marginRight: 2 }}>TAGS</span>
+            {manualTags.map((t) => (
+              <span key={t.id} className="rounded-full px-2 py-0.5 flex items-center gap-1" style={{ fontSize: 10, fontWeight: 500, background: `${t.color || "#2563EB"}1f`, color: t.color || "#2563EB" }}>
+                {t.name}
+                <button onClick={() => detachTag(t.id)} title="Remove" style={{ color: "inherit", opacity: 0.6, cursor: "pointer", display: "flex" }}><X size={9} /></button>
+              </span>
+            ))}
+            <div style={{ position: "relative" }}>
+              <button onClick={() => setTagPickerOpen((o) => !o)} className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, border: "1px dashed var(--border)", color: "#64748B", cursor: "pointer", background: "#FFFFFF" }}>+ Tag</button>
+              {tagPickerOpen && (
+                <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, width: 200, background: "#FFFFFF", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.1)", zIndex: 120, padding: 6 }}>
+                  {allTags.filter((t) => !manualTags.some((m) => m.id === t.id)).map((t) => (
+                    <button key={t.id} onClick={() => attachTag(t.id)} className="flex items-center gap-2 w-full px-2 py-1.5 rounded" style={{ fontSize: 12, color: "#334155", cursor: "pointer" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "#F8FAFC")} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                      <span className="rounded-full" style={{ width: 8, height: 8, background: t.color || "#2563EB", display: "inline-block" }} />{t.name}
+                    </button>
+                  ))}
+                  <div className="flex gap-1 mt-1 pt-1" style={{ borderTop: "1px solid #F1F5F9" }}>
+                    <input value={newTagName} onChange={(e) => setNewTagName(e.target.value)} placeholder="New tag…"
+                      onKeyDown={(e) => { if (e.key === "Enter") createAndAttach(); }}
+                      style={{ flex: 1, fontSize: 11, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: 6, outline: "none", color: "#0F172A" }} />
+                    <button onClick={createAndAttach} style={{ fontSize: 11, color: "#FFFFFF", background: "#2563EB", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>Add</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Tabs */}
