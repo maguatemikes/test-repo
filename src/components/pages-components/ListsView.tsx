@@ -3,6 +3,11 @@
 import { List, Plus, MoreHorizontal, Upload, Download, Trash2, Search, X, ChevronLeft } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { ImportCsvModal } from "../ImportCsvModal";
+import { EmptyState } from "@/components/ui/EmptyState";
+
+const SkBar = ({ w, h = 12, r = 6 }: { w: number; h?: number; r?: number }) => (
+  <div className="animate-pulse" style={{ width: w, height: h, borderRadius: r, background: "#E2E8F0", flexShrink: 0 }} />
+);
 
 type ListRow = { id: number; name: string; description: string; source: string; count: number; created: string; updated: string };
 type MemberRow = { id: number; name: string; email: string; source: string; joined: string };
@@ -252,8 +257,29 @@ export function ListsView({ }: ListsViewProps) {
             </tr>
           </thead>
           <tbody>
+            {loading && Array.from({ length: 5 }).map((_, i) => (
+              <tr key={`sk-${i}`} style={{ borderBottom: "1px solid #F8FAFC" }}>
+                <td style={{ padding: "11px 14px" }}><div className="flex items-center gap-2.5"><SkBar w={28} h={28} r={8} /><div className="flex flex-col gap-1.5"><SkBar w={130} h={11} /><SkBar w={170} h={9} /></div></div></td>
+                <td style={{ padding: "11px 14px" }}><SkBar w={30} h={11} /></td>
+                <td style={{ padding: "11px 14px" }}><SkBar w={54} h={18} r={999} /></td>
+                <td style={{ padding: "11px 14px" }}><SkBar w={70} h={10} /></td>
+                <td style={{ padding: "11px 14px" }}><SkBar w={70} h={10} /></td>
+                <td style={{ padding: "11px 14px" }}><SkBar w={50} h={14} /></td>
+              </tr>
+            ))}
             {!loading && filteredLists.length === 0 && (
-              <tr><td colSpan={6} style={{ padding: "32px 14px", textAlign: "center", fontSize: 12, color: "#94A3B8" }}>No lists yet — create one with “New List”.</td></tr>
+              <tr><td colSpan={6} style={{ padding: 0 }}>
+                <EmptyState
+                  icon={List}
+                  title={query ? "No lists match your search" : "No lists yet"}
+                  description={query ? "Try a different search term." : "Lists are audiences you build by hand — add customers manually, or collect them via a form opt-in."}
+                  action={!query ? (
+                    <button onClick={newList} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF", cursor: "pointer" }}>
+                      <Plus size={13} /> New List
+                    </button>
+                  ) : undefined}
+                />
+              </td></tr>
             )}
             {filteredLists.map((l, i) => {
               const sc = sourceColors[l.source] || { bg: "#F8FAFC", color: "#64748B" };

@@ -2,6 +2,7 @@
 
 import { Search, Upload, Download, MoreHorizontal, Star, AlertTriangle, UserPlus, RefreshCw, X, ShoppingBag, Mail, MapPin, Activity, ChevronRight, Package, SlidersHorizontal } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { ListsView } from "./ListsView";
 import { SegmentsView } from "./SegmentsView";
 import { ImportCsvModal } from "../ImportCsvModal";
@@ -691,6 +692,15 @@ export function CustomersView({
             </tr>
           </thead>
           <tbody>
+            {filtered.length === 0 && (
+              <tr><td colSpan={99} style={{ padding: 0 }}>
+                <EmptyState
+                  icon={UserPlus}
+                  title={serverQuery || serverTag || serverSource || serverChannel ? "No customers match your filters" : "No customers yet"}
+                  description={serverQuery || serverTag || serverSource || serverChannel ? "Try clearing the search or filters." : "Customers appear here once they're imported or sign up via a form."}
+                />
+              </td></tr>
+            )}
             {filtered.map((c, i) => {
               const isSelected = selected.includes(c.id);
               return (

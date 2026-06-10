@@ -2,9 +2,24 @@
 
 import { Filter, Plus, ChevronLeft, RefreshCw, Copy, Archive, MoreHorizontal, Search, Eye, Play, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import { useState, useEffect } from "react";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 type SegRow = { id: string; name: string; rules: string[]; count: number; status: string };
 type Member = { name: string; email: string; spend: string; lastOrder: string };
+
+const SkBar = ({ w, h = 12, r = 6 }: { w: number; h?: number; r?: number }) => (
+  <div className="animate-pulse" style={{ width: w, height: h, borderRadius: r, background: "#E2E8F0", flexShrink: 0 }} />
+);
+function SkeletonSegCard() {
+  return (
+    <div className="rounded-xl p-4" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
+      <div className="flex items-center justify-between mb-3"><SkBar w={32} h={32} r={8} /><SkBar w={54} h={18} r={999} /></div>
+      <SkBar w={140} h={13} />
+      <div className="mt-2 mb-4 flex flex-col gap-1.5"><SkBar w={120} h={9} /><SkBar w={90} h={9} /></div>
+      <div className="flex items-center justify-between pt-3" style={{ borderTop: "1px solid #F1F5F9" }}><SkBar w={48} h={16} /><SkBar w={60} h={11} /></div>
+    </div>
+  );
+}
 
 const statusConfig: Record<string, { bg: string; color: string; dot: string; label: string }> = {
   ready: { bg: "#F0FDF4", color: "#15803D", dot: "#22C55E", label: "Ready" },
@@ -308,6 +323,22 @@ export function SegmentsView() {
         </div>
       </div>
 
+      {loading ? (
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonSegCard key={i} />)}
+        </div>
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={Filter}
+          title={query ? "No segments match your search" : "No segments yet"}
+          description={query ? "Try a different search term." : "Build a dynamic audience with rules — e.g. “Lifetime spend ≥ $1,000 and last order within 30 days.” It updates automatically as customers qualify."}
+          action={!query ? (
+            <button onClick={() => setBuilder({})} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF", cursor: "pointer" }}>
+              <Plus size={13} /> New Segment
+            </button>
+          ) : undefined}
+        />
+      ) : (
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
         {filtered.map((s) => {
           const sc = statusConfig[s.status] || statusConfig.ready;
@@ -355,10 +386,8 @@ export function SegmentsView() {
             </div>
           );
         })}
-        {!loading && filtered.length === 0 && (
-          <p style={{ fontSize: 12, color: "#94A3B8" }}>No segments — create one with “New Segment”.</p>
-        )}
       </div>
+      )}
     </div>
   );
 }

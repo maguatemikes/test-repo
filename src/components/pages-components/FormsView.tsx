@@ -3,6 +3,7 @@
 import { FileText, Plus, Eye, Code, Trash2, X, Copy, Check } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { EmptyState } from "@/components/ui/EmptyState";
 import {
   createFormAction,
   updateFormAction,
@@ -126,7 +127,18 @@ export function FormsView({ forms, lists }: { forms: FormRow[]; lists: ListRow[]
           </thead>
           <tbody>
             {forms.length === 0 && (
-              <tr><td colSpan={9} style={{ padding: "28px 14px", textAlign: "center", fontSize: 13, color: "#94A3B8" }}>No forms yet — click “New Form” to build one.</td></tr>
+              <tr><td colSpan={9} style={{ padding: 0 }}>
+                <EmptyState
+                  icon={FileText}
+                  title="No forms yet"
+                  description="Build a signup form to capture subscribers — embed it on your site or share a hosted link. Submissions flow straight into your lists."
+                  action={
+                    <button onClick={() => setEditing(defaultForm(lists))} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF", cursor: "pointer" }}>
+                      <Plus size={13} /> New Form
+                    </button>
+                  }
+                />
+              </td></tr>
             )}
             {forms.map((f, i) => {
               const label = TYPE_LABEL[f.type];
