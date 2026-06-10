@@ -1,18 +1,23 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { listLists, createList } from "@/server/repositories/lists";
 
-// TODO: derive from the authenticated org once auth is wired.
-const ORG_ID = 1;
-
-export async function listListsAction() {
-  return listLists(ORG_ID);
-}
+/** Create a list via crm-api (used by the form builder's "new target list"). */
+const API_BASE = process.env.NETX_API_BASE_URL;
 
 export async function createListAction(name: string) {
   if (!name?.trim()) throw new Error("List name is required");
-  const id = await createList(ORG_ID, name.trim(), { source: "form" });
+  if (!API_BASE) throw new Error("Lists service is not configured.");
+  const cookie = (await cookies()).toString();
+  const res = await fetch(`${API_BASE}/lists`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(cookie ? { cookie } : {}) },
+    body: JSON.stringify({ name: name.trim(), source: "form" }),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Failed to create list");
+  const d = await res.json().catch(() => ({}));
   revalidatePath("/forms");
-  return { id };
+  return { id: d.Id ?? d.id };
 }
