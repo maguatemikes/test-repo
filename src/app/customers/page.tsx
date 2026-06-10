@@ -39,8 +39,15 @@ export default async function CustomersPage({
   const channel = (sp.channel ?? "").trim();
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
-  // Data now comes from crm-api (not the DB directly). tag chip → crm-api `filter`.
-  const res = await fetchCustomers({ q, page, pageSize: PAGE_SIZE, filter: tag });
+  // Data now comes from crm-api. Map the chip label → crm-api `filter` value.
+  const FILTER_MAP: Record<string, string> = {
+    "VIP": "vip",
+    "At Risk": "at_risk",
+    "New": "new_30d",
+    "Has Refund": "has_refund",
+    "Subscribed": "subscribed",
+  };
+  const res = await fetchCustomers({ q, page, pageSize: PAGE_SIZE, filter: FILTER_MAP[tag] || "" });
 
   const dbCustomers: React.ComponentProps<typeof CustomersClient>["dbCustomers"] = res.rows.map((r) => ({
     id: String(r.id),
