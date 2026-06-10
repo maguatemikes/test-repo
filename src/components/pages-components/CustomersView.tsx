@@ -127,13 +127,13 @@ function CustomerDrawer({ customer, onClose }: { customer: typeof mockCustomers[
   useEffect(() => {
     let active = true;
     setOrdersLoading(true);
-    fetch(`/api/customers/orders?email=${encodeURIComponent(customer.email)}`)
+    fetch(`/api/customers/${encodeURIComponent(customer.id)}/orders`)
       .then((r) => r.json())
       .then((d) => { if (active) setOrders(d.orders || []); })
       .catch(() => { if (active) setOrders([]); })
       .finally(() => { if (active) setOrdersLoading(false); });
     return () => { active = false; };
-  }, [customer.email]);
+  }, [customer.id]);
   const activity = drawerActivity[customer.id] || drawerActivity.default;
   const initials = customer.name.split(" ").map((n) => n[0]).join("");
   const fmtMoney = (n: number) => `$${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
