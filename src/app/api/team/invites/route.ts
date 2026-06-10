@@ -27,7 +27,7 @@ export async function POST(req: Request) {
 
   try {
     const cookie = req.headers.get("cookie");
-    const upstream = await fetch(`${API_BASE}/api/invites`, {
+    const upstream = await fetch(`${API_BASE}/invites`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(cookie ? { cookie } : {}) },
       body: JSON.stringify({ email, role }),
