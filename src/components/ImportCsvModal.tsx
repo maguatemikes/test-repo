@@ -18,6 +18,29 @@ interface ImportCsvModalProps {
   onClose: () => void;
   context?: "customers" | "list";
   listName?: string;
+  onImported?: () => void;
+}
+
+function splitLine(line: string): string[] {
+  return line.split(",").map((c) => c.trim().replace(/^["']|["']$/g, ""));
+}
+
+/** Rebuild the CSV using the user's column mapping → canonical system-field headers the API understands. */
+function remapCsv(text: string, headers: string[], mapping: Record<string, string>): string {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim().length);
+  if (lines.length === 0) return "";
+  const keep: number[] = [];
+  const newHeaders: string[] = [];
+  headers.forEach((h, i) => {
+    const m = mapping[h];
+    if (m && m !== "skip") { keep.push(i); newHeaders.push(m); }
+  });
+  const out = [newHeaders.join(",")];
+  for (let r = 1; r < lines.length; r++) {
+    const cells = splitLine(lines[r]);
+    out.push(keep.map((i) => (cells[i] ?? "").replace(/,/g, " ")).join(","));
+  }
+  return out.join("\n");
 }
 
 function parseCsvHeaders(text: string): string[] {
@@ -41,16 +64,19 @@ function autoMap(header: string): string {
   return "skip";
 }
 
-export function ImportCsvModal({ onClose, context = "customers", listName }: ImportCsvModalProps) {
+export function ImportCsvModal({ onClose, context = "customers", listName, onImported }: ImportCsvModalProps) {
   const [step, setStep] = useState<Step>("upload");
   const [dragging, setDragging] = useState(false);
   const [fileName, setFileName] = useState("");
   const [headers, setHeaders] = useState<string[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [rowCount, setRowCount] = useState(0);
+  const [csvText, setCsvText] = useState("");
   const [progress, setProgress] = useState(0);
   const [importedCount, setImportedCount] = useState(0);
+  const [updatedCount, setUpdatedCount] = useState(0);
   const [errorRows, setErrorRows] = useState(0);
+  const [errMsg, setErrMsg] = useState("");
   const [dupOption, setDupOption] = useState<"update" | "skip">("update");
   const inputRef = useRef<HTMLInputElement>(null);
   const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
@@ -66,6 +92,7 @@ export function ImportCsvModal({ onClose, context = "customers", listName }: Imp
       const text = e.target?.result as string;
       const hdrs = parseCsvHeaders(text);
       const rows = countRows(text);
+      setCsvText(text);
       setHeaders(hdrs);
       setRowCount(rows);
       const autoMapped: Record<string, string> = {};
@@ -88,22 +115,28 @@ export function ImportCsvModal({ onClose, context = "customers", listName }: Imp
     if (file) handleFile(file);
   };
 
-  const startImport = () => {
+  const startImport = async () => {
     setStep("importing");
-    setProgress(0);
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        if (p >= 100) {
-          clearInterval(interval);
-          const skipped = Math.floor(rowCount * 0.04);
-          setImportedCount(rowCount - skipped);
-          setErrorRows(skipped);
-          setStep("done");
-          return 100;
-        }
-        return p + Math.random() * 12;
+    setProgress(35);
+    const remapped = remapCsv(csvText, headers, mapping);
+    try {
+      const res = await fetch("/api/customers/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: remapped }),
       });
-    }, 120);
+      const data = await res.json().catch(() => ({}));
+      setProgress(100);
+      if (!res.ok) { setErrMsg(data.error || "Import failed. Please check your file and try again."); setStep("error"); return; }
+      setImportedCount(data.imported ?? 0);
+      setUpdatedCount(data.updated ?? 0);
+      setErrorRows((data.skipped ?? 0) + (Array.isArray(data.errors) ? data.errors.length : 0));
+      setStep("done");
+      onImported?.();
+    } catch {
+      setErrMsg("Network error during import.");
+      setStep("error");
+    }
   };
 
   const emailMapped = Object.values(mapping).includes("email");
@@ -311,15 +344,15 @@ export function ImportCsvModal({ onClose, context = "customers", listName }: Imp
               </div>
               <p style={{ fontSize: 14, fontWeight: 600, color: "#0F172A", marginBottom: 4 }}>Import complete!</p>
               <p style={{ fontSize: 12, color: "#64748B", marginBottom: 20 }}>
-                {importedCount.toLocaleString()} contacts imported{context === "list" && listName ? ` into "${listName}"` : ""}.
-                {errorRows > 0 && ` ${errorRows} rows skipped (invalid email or missing data).`}
+                {importedCount.toLocaleString()} added{updatedCount > 0 ? `, ${updatedCount.toLocaleString()} updated` : ""}{context === "list" && listName ? ` in "${listName}"` : ""}.
+                {errorRows > 0 ? ` ${errorRows} rows skipped (invalid email or missing data).` : ""}
               </p>
               <div className="w-full rounded-lg p-4 space-y-2 text-left" style={{ background: "#F8FAFC", border: "1px solid var(--border)" }}>
                 {[
                   { label: "Total rows processed", value: rowCount.toLocaleString() },
-                  { label: "Contacts imported", value: importedCount.toLocaleString(), color: "#16A34A" },
+                  { label: "New contacts", value: importedCount.toLocaleString(), color: "#16A34A" },
+                  { label: "Updated", value: updatedCount.toLocaleString(), color: "#2563EB" },
                   { label: "Rows skipped", value: String(errorRows), color: errorRows > 0 ? "#DC2626" : "#64748B" },
-                  { label: "Duplicate handling", value: dupOption === "update" ? "Updated" : "Skipped" },
                 ].map((row) => (
                   <div key={row.label} className="flex items-center justify-between">
                     <span style={{ fontSize: 12, color: "#64748B" }}>{row.label}</span>
@@ -327,6 +360,16 @@ export function ImportCsvModal({ onClose, context = "customers", listName }: Imp
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {step === "error" && (
+            <div className="p-8 flex flex-col items-center justify-center text-center" style={{ minHeight: 240 }}>
+              <div className="rounded-full flex items-center justify-center mb-4" style={{ width: 52, height: 52, background: "#FFF1F2" }}>
+                <AlertCircle size={24} color="#BE123C" />
+              </div>
+              <p style={{ fontSize: 14, fontWeight: 600, color: "#0F172A", marginBottom: 4 }}>Import failed</p>
+              <p style={{ fontSize: 12, color: "#64748B", maxWidth: 320 }}>{errMsg}</p>
             </div>
           )}
         </div>

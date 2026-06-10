@@ -2,6 +2,7 @@
 
 import { Search, Upload, Download, MoreHorizontal, Star, AlertTriangle, UserPlus, RefreshCw, X, ShoppingBag, Mail, MapPin, Activity, ChevronRight, Package, SlidersHorizontal } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ListsView } from "./ListsView";
 import { SegmentsView } from "./SegmentsView";
@@ -485,6 +486,47 @@ export function CustomersView({
   const [drawerCustomer, setDrawerCustomer] = useState<typeof mockCustomers[0] | null>(null);
   const [csvModalOpen, setCsvModalOpen] = useState(false);
 
+  // ── Bulk operations (tag / suppress / export / merge) → crm-api ──
+  const router = useRouter();
+  const [bulkTags, setBulkTags] = useState<{ id: number; name: string; color: string }[]>([]);
+  const [bulkTagOpen, setBulkTagOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  useEffect(() => {
+    if (selected.length > 0 && bulkTags.length === 0)
+      fetch("/api/tags").then((r) => r.json()).then((d) => setBulkTags(Array.isArray(d) ? d : d.tags || [])).catch(() => {});
+  }, [selected.length, bulkTags.length]);
+  const selectedIds = () => selected.map((s) => Number(s)).filter((n) => !Number.isNaN(n));
+  const bulkApplyTag = async (tagId: number) => {
+    setBulkBusy(true); setBulkTagOpen(false);
+    const r = await fetch("/api/customers/bulk/tag", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: selectedIds(), tagId }) });
+    setBulkBusy(false);
+    if (r.ok) { setSelected([]); router.refresh(); } else alert("Failed to tag customers.");
+  };
+  const bulkSuppress = async () => {
+    if (!confirm(`Suppress ${selected.length} customer(s)? They will stop receiving email.`)) return;
+    setBulkBusy(true);
+    const r = await fetch("/api/customers/bulk/suppress", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: selectedIds() }) });
+    setBulkBusy(false);
+    if (r.ok) { setSelected([]); router.refresh(); } else alert("Failed to suppress.");
+  };
+  const bulkExport = async () => {
+    setBulkBusy(true);
+    const r = await fetch("/api/customers/bulk/export", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: selectedIds() }) });
+    setBulkBusy(false);
+    if (!r.ok) { alert("Export failed."); return; }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "customers.csv"; a.click(); URL.revokeObjectURL(url);
+  };
+  const doMerge = async (canonicalId: number, aliasId: number) => {
+    setBulkBusy(true);
+    const r = await fetch("/api/customers/merge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ canonicalId, aliasId }) });
+    setBulkBusy(false);
+    if (r.ok) { setMergeOpen(false); setSelected([]); router.refresh(); }
+    else { const d = await r.json().catch(() => ({})); alert(d.error || "Merge failed."); }
+  };
+
   // Sync when sidebar drives a tab change externally
   useEffect(() => { setSubTab(initialTab); }, [initialTab]);
 
@@ -556,7 +598,15 @@ export function CustomersView({
         <CustomerDrawer customer={drawerCustomer} onClose={() => setDrawerCustomer(null)} />
       )}
       {csvModalOpen && (
-        <ImportCsvModal onClose={() => setCsvModalOpen(false)} context="customers" />
+        <ImportCsvModal onClose={() => setCsvModalOpen(false)} context="customers" onImported={() => router.refresh()} />
+      )}
+      {mergeOpen && selected.length === 2 && (
+        <MergeDialog
+          people={customers.filter((c) => selected.includes(c.id)).map((c) => ({ id: c.id, name: c.name, email: c.email }))}
+          busy={bulkBusy}
+          onCancel={() => setMergeOpen(false)}
+          onMerge={doMerge}
+        />
       )}
 
       {tabBar}
@@ -637,10 +687,29 @@ export function CustomersView({
         </div>
 
         {selected.length > 0 && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <span style={{ fontSize: 12, color: "#64748B" }}>{selected.length} selected</span>
-            <button style={{ fontSize: 12, color: "#2563EB", fontWeight: 500 }}>Tag</button>
-            <button style={{ fontSize: 12, color: "#DC2626", fontWeight: 500 }}>Suppress</button>
+            <div className="relative">
+              <button disabled={bulkBusy} onClick={() => setBulkTagOpen((o) => !o)} style={{ fontSize: 12, color: "#2563EB", fontWeight: 500, cursor: "pointer", opacity: bulkBusy ? 0.5 : 1 }}>Tag</button>
+              {bulkTagOpen && (
+                <div className="absolute z-30 rounded-lg" style={{ top: "calc(100% + 4px)", left: 0, background: "#FFFFFF", border: "1px solid var(--border)", boxShadow: "0 8px 24px rgba(15,23,42,0.12)", minWidth: 170, padding: 4 }}>
+                  {bulkTags.length === 0 && <p style={{ fontSize: 11, color: "#94A3B8", padding: "6px 10px" }}>No tags yet</p>}
+                  {bulkTags.map((t) => (
+                    <button key={t.id} onClick={() => bulkApplyTag(t.id)} className="flex items-center gap-2 w-full rounded text-left" style={{ padding: "6px 10px", fontSize: 12, color: "#0F172A", cursor: "pointer" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "#F8FAFC")} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                      <span style={{ width: 8, height: 8, borderRadius: 999, background: t.color || "#94A3B8", display: "inline-block", flexShrink: 0 }} />
+                      {t.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button disabled={bulkBusy} onClick={bulkExport} style={{ fontSize: 12, color: "#0F172A", fontWeight: 500, cursor: "pointer", opacity: bulkBusy ? 0.5 : 1 }}>Export</button>
+            <button disabled={bulkBusy} onClick={bulkSuppress} style={{ fontSize: 12, color: "#DC2626", fontWeight: 500, cursor: "pointer", opacity: bulkBusy ? 0.5 : 1 }}>Suppress</button>
+            {selected.length === 2 && (
+              <button disabled={bulkBusy} onClick={() => setMergeOpen(true)} style={{ fontSize: 12, color: "#7C3AED", fontWeight: 500, cursor: "pointer", opacity: bulkBusy ? 0.5 : 1 }}>Merge</button>
+            )}
+            <button onClick={() => setSelected([])} title="Clear selection" style={{ color: "#94A3B8", cursor: "pointer" }}><X size={13} /></button>
           </div>
         )}
 
@@ -765,6 +834,46 @@ export function CustomersView({
             </div>
           );
         })()}
+      </div>
+    </div>
+  );
+}
+
+function MergeDialog({ people, busy, onCancel, onMerge }: {
+  people: { id: string; name: string; email: string }[];
+  busy: boolean;
+  onCancel: () => void;
+  onMerge: (canonicalId: number, aliasId: number) => void;
+}) {
+  const [keepId, setKeepId] = useState(people[0]?.id ?? "");
+  const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
+  const aliasId = people.find((p) => p.id !== keepId)?.id;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(15,23,42,0.4)" }} onClick={onCancel}>
+      <div className="rounded-xl" style={{ background: "#FFFFFF", width: 440, maxWidth: "90vw", fontFamily: font, padding: 20 }} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: "#0F172A", marginBottom: 4 }}>Merge customers</h3>
+        <p style={{ fontSize: 12.5, color: "#64748B", marginBottom: 16, lineHeight: 1.5 }}>
+          Pick the record to <strong>keep</strong>. The other is merged into it — orders and history move over, then it&apos;s removed. This can&apos;t be undone.
+        </p>
+        <div className="flex flex-col gap-2 mb-5">
+          {people.map((p) => (
+            <label key={p.id} className="flex items-center gap-3 rounded-lg cursor-pointer" style={{ border: `1px solid ${keepId === p.id ? "#2563EB" : "var(--border)"}`, padding: "10px 12px", background: keepId === p.id ? "#EFF6FF" : "#FFFFFF" }}>
+              <input type="radio" name="keep" checked={keepId === p.id} onChange={() => setKeepId(p.id)} />
+              <div>
+                <p style={{ fontSize: 12.5, fontWeight: 500, color: "#0F172A" }}>{p.name || "—"}</p>
+                <p style={{ fontSize: 11, color: "#64748B" }}>{p.email}</p>
+              </div>
+              {keepId === p.id && <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 600, color: "#2563EB" }}>KEEP</span>}
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2">
+          <button onClick={onCancel} disabled={busy} style={{ fontSize: 12, fontWeight: 500, color: "#64748B", padding: "8px 14px", cursor: "pointer" }}>Cancel</button>
+          <button onClick={() => { if (keepId && aliasId) onMerge(Number(keepId), Number(aliasId)); }} disabled={busy || !aliasId}
+            style={{ fontSize: 12, fontWeight: 500, color: "#FFFFFF", background: "#7C3AED", borderRadius: 8, padding: "8px 16px", cursor: "pointer", opacity: busy ? 0.6 : 1 }}>
+            {busy ? "Merging…" : "Merge"}
+          </button>
+        </div>
       </div>
     </div>
   );
