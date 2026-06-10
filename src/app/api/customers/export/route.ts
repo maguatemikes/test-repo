@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 
 /**
  * Export the full current customer view (all rows matching q + filter) as CSV.
- * Collects every matching id from crm-api, then hands them to bulk/export.
+ * Builds the CSV directly from the customer list pages (fetched in parallel) —
+ * no second round-trip to bulk/export.
  */
 const API_BASE = process.env.NETX_API_BASE_URL;
 
 export const dynamic = "force-dynamic";
 
-// Same chip-label → crm-api filter mapping as the customers page.
 const FILTER_MAP: Record<string, string> = {
   VIP: "vip",
   "At Risk": "at_risk",
@@ -17,41 +17,59 @@ const FILTER_MAP: Record<string, string> = {
   Subscribed: "subscribed",
 };
 
+type Row = {
+  id: number; email: string; displayName?: string | null; isVip?: boolean;
+  isSubscribed?: boolean; lifetimeSpend?: number | null; orderCount?: number | null; lastOrderAt?: string | null;
+};
+
+const esc = (v: unknown) => {
+  const s = v == null ? "" : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
 export async function GET(req: Request) {
   if (!API_BASE) return NextResponse.json({ error: "Not configured" }, { status: 503 });
   const cookie = req.headers.get("cookie") || "";
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q") || "";
   const filter = FILTER_MAP[searchParams.get("tag") || ""] || "";
-
-  // Collect every matching id (paginate, with a safety cap).
-  const ids: number[] = [];
   const pageSize = 500;
-  for (let page = 1; page <= 60; page++) {
+  const MAX_PAGES = 60;
+
+  // Retry on failure so a transient drop never silently loses a page of rows.
+  const fetchPage = async (page: number, attempt = 0): Promise<{ rows: Row[]; total: number }> => {
     const sp = new URLSearchParams();
     if (q) sp.set("q", q);
     if (filter) sp.set("filter", filter);
     sp.set("page", String(page));
     sp.set("pageSize", String(pageSize));
-    const r = await fetch(`${API_BASE}/customers?${sp}`, { headers: cookie ? { cookie } : {}, cache: "no-store" });
-    if (!r.ok) break;
-    const d = await r.json();
-    const rows: { id: number }[] = d.rows || [];
-    for (const row of rows) ids.push(row.id);
-    const total = d.total ?? ids.length;
-    if (rows.length === 0 || ids.length >= total) break;
+    try {
+      const r = await fetch(`${API_BASE}/customers?${sp}`, { headers: cookie ? { cookie } : {}, cache: "no-store" });
+      if (!r.ok) throw new Error(String(r.status));
+      const d = await r.json();
+      return { rows: d.rows || [], total: d.total ?? 0 };
+    } catch {
+      if (attempt < 3) { await new Promise((res) => setTimeout(res, 300 * (attempt + 1))); return fetchPage(page, attempt + 1); }
+      return { rows: [], total: -1 };
+    }
+  };
+
+  // MUST be sequential: crm-api returns 200-with-missing-rows under any concurrent
+  // load (not an error, so it can't be retried away). One page at a time = correct.
+  // Slow for large sets — the real fix is a backend GET /customers/export (one query).
+  const rows: Row[] = [];
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const { rows: pageRows, total } = await fetchPage(page);
+    rows.push(...pageRows);
+    if (pageRows.length === 0 || (total > 0 && rows.length >= total)) break;
   }
 
-  if (ids.length === 0) {
-    return new Response("id,email\n", { headers: { "Content-Type": "text/csv", "Content-Disposition": "attachment; filename=customers.csv" } });
-  }
+  const header = "id,email,display_name,is_vip,is_subscribed,lifetime_spend,order_count,last_order_at";
+  const body = rows.map((r) =>
+    [r.id, esc(r.email), esc(r.displayName ?? ""), r.isVip ? 1 : 0, r.isSubscribed ? 1 : 0, r.lifetimeSpend ?? 0, r.orderCount ?? 0, r.lastOrderAt ?? ""].join(","),
+  ).join("\n");
 
-  const exp = await fetch(`${API_BASE}/customers/bulk/export`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...(cookie ? { cookie } : {}) },
-    body: JSON.stringify({ ids }),
+  return new Response(header + "\n" + body + "\n", {
+    headers: { "Content-Type": "text/csv", "Content-Disposition": "attachment; filename=customers.csv" },
   });
-  if (!exp.ok) return NextResponse.json({ error: "Export failed" }, { status: exp.status });
-  const csv = await exp.text();
-  return new Response(csv, { headers: { "Content-Type": "text/csv", "Content-Disposition": "attachment; filename=customers.csv" } });
 }
