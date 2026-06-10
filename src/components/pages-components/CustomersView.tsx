@@ -519,6 +519,20 @@ export function CustomersView({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = "customers.csv"; a.click(); URL.revokeObjectURL(url);
   };
+  // Export the whole current view (all rows matching the search + filter), not just selected.
+  const exportView = async () => {
+    if (total > 1000 && !confirm(`Export all ${total.toLocaleString()} customers in this view?`)) return;
+    const params = new URLSearchParams();
+    if (serverQuery) params.set("q", serverQuery);
+    if (serverTag) params.set("tag", serverTag);
+    setBulkBusy(true);
+    const r = await fetch(`/api/customers/export?${params.toString()}`);
+    setBulkBusy(false);
+    if (!r.ok) { alert("Export failed."); return; }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "customers.csv"; a.click(); URL.revokeObjectURL(url);
+  };
   const doMerge = async (canonicalId: number, aliasId: number) => {
     setBulkBusy(true);
     const r = await fetch("/api/customers/merge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ canonicalId, aliasId }) });
@@ -719,9 +733,10 @@ export function CustomersView({
           style={{ fontSize: 12, background: "#FFFFFF", border: "1px solid var(--border)", color: "#64748B", fontFamily: font, cursor: "pointer" }}>
           <Upload size={13} /> Import CSV
         </button>
-        <button className="flex items-center gap-1.5 rounded-lg px-3 py-1.5"
-          style={{ fontSize: 12, background: "#FFFFFF", border: "1px solid var(--border)", color: "#64748B", fontFamily: font }}>
-          <Download size={13} /> Export
+        <button onClick={exportView} disabled={bulkBusy} title="Export all customers in the current view"
+          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5"
+          style={{ fontSize: 12, background: "#FFFFFF", border: "1px solid var(--border)", color: "#64748B", fontFamily: font, cursor: bulkBusy ? "wait" : "pointer", opacity: bulkBusy ? 0.6 : 1 }}>
+          <Download size={13} /> {bulkBusy ? "Exporting…" : "Export"}
         </button>
       </div>
 
