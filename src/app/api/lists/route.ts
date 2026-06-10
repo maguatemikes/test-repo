@@ -1,90 +1,113 @@
 import { NextResponse } from "next/server";
-import {
-  listListsWithCounts, getListMembersDetailed, createList, deleteList, addMember, removeMember,
-} from "@/server/repositories/lists";
-import { searchCustomers } from "@/server/repositories/customers";
 
-// TODO: derive org from auth once wired.
-const ORG_ID = 1;
+/**
+ * Proxy → crm-api /api/lists*. Forwards the session cookie.
+ * Same interface ListsView expects:
+ *   GET            → { lists:[{ id,name,description,source,count,created,updated }] }
+ *   GET ?members=id → { members:[{ id,name,email,source,joined }] }
+ *   GET ?search=q   → { candidates:[{ id,name,email }] }   (customer search to add)
+ *   POST { name }                          → { ok, id }
+ *   POST { action:add|remove, listId, customerId } → { ok }
+ *   DELETE ?id=id                          → { ok }
+ */
+const API_BASE = process.env.NETX_API_BASE_URL;
 
 export const dynamic = "force-dynamic";
 
-const fmtDate = (d: Date | string | null) =>
+const fmtDate = (d: string | null) =>
   d ? new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
 
-const nameOf = (r: { displayName?: string | null; firstName?: string | null; lastName?: string | null; email: string }) =>
-  r.displayName || [r.firstName, r.lastName].filter(Boolean).join(" ") || r.email;
+async function api(cookie: string, path: string, init?: RequestInit) {
+  return fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...(cookie ? { cookie } : {}) },
+    cache: "no-store",
+  });
+}
 
-// GET /api/lists                 → lists with live counts
-// GET /api/lists?members=<id>    → a list's members
-// GET /api/lists?search=<q>      → customers to add (id/name/email)
 export async function GET(req: Request) {
+  if (!API_BASE) return NextResponse.json({ ok: false, lists: [] }, { status: 503 });
   const url = new URL(req.url);
   const membersId = url.searchParams.get("members");
   const search = url.searchParams.get("search");
+  const cookie = req.headers.get("cookie") || "";
 
   try {
     if (membersId) {
-      const rows = await getListMembersDetailed(Number(membersId));
+      const res = await api(cookie, `/lists/${encodeURIComponent(membersId)}/members?pageSize=200`);
+      if (!res.ok) return NextResponse.json({ ok: true, members: [] });
+      const d = await res.json();
       return NextResponse.json({
         ok: true,
-        members: rows.map((r) => ({
-          id: r.id, name: nameOf(r), email: r.email, source: r.source || "manual", joined: fmtDate(r.addedAt),
+        members: (d.rows || []).map((r: Record<string, unknown>) => ({
+          id: r.Id, name: (r.DisplayName as string) || (r.Email as string), email: r.Email,
+          source: "manual", joined: fmtDate((r.AddedAt as string) ?? null),
         })),
       });
     }
     if (search !== null) {
-      const { rows } = await searchCustomers(ORG_ID, { q: search, limit: 10 });
+      const res = await api(cookie, `/customers?q=${encodeURIComponent(search)}&pageSize=10`);
+      if (!res.ok) return NextResponse.json({ ok: true, candidates: [] });
+      const d = await res.json();
       return NextResponse.json({
         ok: true,
-        candidates: rows.map((r) => ({ id: r.id, name: nameOf(r), email: r.email })),
+        candidates: (d.rows || []).map((r: Record<string, unknown>) => ({
+          id: r.id, name: (r.displayName as string) || (r.email as string), email: r.email,
+        })),
       });
     }
-    const rows = await listListsWithCounts(ORG_ID);
+    const res = await api(cookie, `/lists`);
+    if (!res.ok) return NextResponse.json({ ok: true, lists: [] });
+    const d = await res.json();
     return NextResponse.json({
       ok: true,
-      lists: rows.map((l) => ({
-        id: l.id, name: l.name, description: l.description || "", source: l.source || "manual",
-        count: Number(l.count), created: fmtDate(l.createdAt), updated: fmtDate(l.createdAt),
+      lists: (d.rows || []).map((l: Record<string, unknown>) => ({
+        id: l.Id, name: l.Name, description: (l.Description as string) || "", source: (l.Source as string) || "manual",
+        count: Number(l.MemberCount ?? 0), created: fmtDate((l.CreatedAt as string) ?? null), updated: fmtDate((l.CreatedAt as string) ?? null),
       })),
     });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 502 });
   }
 }
 
-// POST /api/lists  { name, description }                 → create a list
-// POST /api/lists  { action:"add"|"remove", listId, customerId } → member ops
 export async function POST(req: Request) {
+  if (!API_BASE) return NextResponse.json({ ok: false, error: "Not configured" }, { status: 503 });
+  const cookie = req.headers.get("cookie") || "";
   try {
     const body = await req.json();
 
     if (body.action === "add" || body.action === "remove") {
-      const listId = Number(body.listId);
-      const customerId = Number(body.customerId);
+      const listId = Number(body.listId), customerId = Number(body.customerId);
       if (!listId || !customerId) return NextResponse.json({ ok: false, error: "listId and customerId are required" }, { status: 400 });
-      if (body.action === "add") await addMember(listId, customerId);
-      else await removeMember(listId, customerId);
+      const res = body.action === "add"
+        ? await api(cookie, `/lists/${listId}/members`, { method: "POST", body: JSON.stringify({ customerId }) })
+        : await api(cookie, `/lists/${listId}/members/${customerId}`, { method: "DELETE" });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); return NextResponse.json({ ok: false, error: e.message || "Failed" }, { status: res.status }); }
       return NextResponse.json({ ok: true });
     }
 
     const name = String(body.name || "").trim();
     if (!name) return NextResponse.json({ ok: false, error: "A list name is required" }, { status: 400 });
-    const id = await createList(ORG_ID, name, { description: body.description });
-    return NextResponse.json({ ok: true, id }, { status: 201 });
+    const res = await api(cookie, `/lists`, { method: "POST", body: JSON.stringify({ name, description: body.description }) });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); return NextResponse.json({ ok: false, error: e.message || "Failed" }, { status: res.status }); }
+    const d = await res.json().catch(() => ({}));
+    return NextResponse.json({ ok: true, id: d.Id ?? d.id }, { status: 201 });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 502 });
   }
 }
 
-// DELETE /api/lists?id=<id>  → delete a list (and its membership)
 export async function DELETE(req: Request) {
+  if (!API_BASE) return NextResponse.json({ ok: false, error: "Not configured" }, { status: 503 });
+  const cookie = req.headers.get("cookie") || "";
   try {
     const id = Number(new URL(req.url).searchParams.get("id"));
     if (!id) return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
-    await deleteList(id);
+    const res = await api(cookie, `/lists/${id}`, { method: "DELETE" });
+    if (!res.ok) return NextResponse.json({ ok: false, error: "Delete failed" }, { status: res.status });
     return NextResponse.json({ ok: true });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 502 });
   }
 }
