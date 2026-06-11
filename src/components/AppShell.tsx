@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
@@ -19,6 +19,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // Navigation as a transition: keeps the current page visible while the next route
+  // loads, and exposes a pending flag for the top progress bar (no blank "snap").
+  const [isNavigating, startTransition] = useTransition();
 
   // Close the mobile drawer whenever the route changes.
   useEffect(() => {
@@ -49,19 +52,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const handleNavigate = (section: NavSection) => {
     setMobileNavOpen(false);
-    router.push(sectionToPath(section));
+    startTransition(() => router.push(sectionToPath(section)));
   };
 
   const handleNavigateCustomer = (sub: CustomerSubTab) => {
     setMobileNavOpen(false);
-    router.push(customerSubTabToPath(sub));
+    startTransition(() => router.push(customerSubTabToPath(sub)));
   };
 
   const handleTopBarAction = () => {
-    if (active === "dashboard" || active === "campaigns") router.push("/campaigns");
-    else if (active === "automations") router.push("/automations");
-    else if (active === "forms") router.push("/forms");
-    else if (active === "settings") router.push("/settings");
+    startTransition(() => {
+      if (active === "dashboard" || active === "campaigns") router.push("/campaigns");
+      else if (active === "automations") router.push("/automations");
+      else if (active === "forms") router.push("/forms");
+      else if (active === "settings") router.push("/settings");
+    });
   };
 
   const isFullHeight =
@@ -69,6 +74,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <SessionProvider>
+    <NavProgress active={isNavigating} />
     <div
       className="flex size-full"
       style={{ fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif", background: "var(--background)", overflow: "hidden" }}
@@ -101,5 +107,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <SessionExpiredModal />
     </div>
     </SessionProvider>
+  );
+}
+
+/** Thin top progress bar shown while a route navigation is pending. */
+function NavProgress({ active }: { active: boolean }) {
+  return (
+    <>
+      <style>{`@keyframes nx-navprogress { 0% { transform: translateX(-100%); } 100% { transform: translateX(500%); } }`}</style>
+      <div style={{ position: "fixed", top: 0, left: 0, right: 0, height: 2.5, zIndex: 100, pointerEvents: "none", opacity: active ? 1 : 0, transition: "opacity 0.2s ease", overflow: "hidden" }}>
+        {active && <div style={{ height: "100%", width: "20%", background: "#2563EB", borderRadius: 999, boxShadow: "0 0 8px rgba(37,99,235,0.5)", animation: "nx-navprogress 0.9s ease-in-out infinite" }} />}
+      </div>
+    </>
   );
 }
