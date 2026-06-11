@@ -5,12 +5,12 @@ import { useCurrentUser } from "@/components/SessionProvider";
 
 const navTitles: Record<string, string> = {
   dashboard: "Dashboard", customers: "Customers", campaigns: "Campaigns",
-  automations: "Automations", forms: "Forms", analytics: "Analytics", settings: "Settings",
+  automations: "Automations", content: "Content", forms: "Forms", analytics: "Analytics", settings: "Settings",
 };
 
 const primaryActions: Record<string, string> = {
   dashboard: "Compose Campaign", customers: "Import CSV", campaigns: "New Campaign",
-  automations: "New Automation", forms: "New Form", analytics: "", settings: "Invite User",
+  automations: "New Automation", content: "", forms: "New Form", analytics: "", settings: "Invite User",
 };
 
 const notifications = [

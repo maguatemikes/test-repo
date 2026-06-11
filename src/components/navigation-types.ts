@@ -3,6 +3,7 @@ export type NavSection =
   | "customers"
   | "campaigns"
   | "automations"
+  | "content"
   | "forms"
   | "analytics"
   | "settings";
@@ -22,6 +23,7 @@ export function pathToSection(pathname: string): NavSection {
     "customers",
     "campaigns",
     "automations",
+    "content",
     "forms",
     "analytics",
     "settings",

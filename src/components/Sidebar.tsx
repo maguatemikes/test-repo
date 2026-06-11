@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, Send, Zap, FileText, BarChart2, Settings,
-  ChevronRight, ChevronDown, Mail, LogOut, HelpCircle, X
+  ChevronRight, ChevronDown, Mail, LogOut, HelpCircle, X, LayoutTemplate
 } from "lucide-react";
 import { useState } from "react";
 import type { CustomerSubTab, NavSection } from "./navigation-types";
@@ -28,6 +28,7 @@ const navItems = [
   },
   { id: "campaigns"   as NavSection, label: "Campaigns",   icon: Mail },
   { id: "automations" as NavSection, label: "Automations", icon: Zap },
+  { id: "content"     as NavSection, label: "Content",     icon: LayoutTemplate },
   { id: "forms"       as NavSection, label: "Forms",       icon: FileText },
   { id: "analytics"   as NavSection, label: "Analytics",   icon: BarChart2 },
 ];
