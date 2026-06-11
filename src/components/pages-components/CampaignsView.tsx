@@ -2,7 +2,7 @@
 
 import { MoreHorizontal, Copy, Archive, Eye, Send, Clock, Edit3, Plus, ChevronRight, X, ArrowUpRight, Users, MousePointerClick, TrendingDown, DollarSign, ChevronLeft, LayoutTemplate } from "lucide-react";
 import { useState, useEffect } from "react";
-import { getTemplates, type MockTemplate } from "@/lib/mockTemplates";
+import { listTemplates, type Template } from "@/lib/templates";
 
 const campaigns = [
   { id: 1, name: "Summer Sale — VIP Segment", status: "sent", type: "Promotional", recipients: 4210, opens: "38.2%", clicks: "7.4%", unsubs: "0.4%", revenue: "$14,800", sent: "Jun 3, 2026", subject: "🌞 Your exclusive summer deals inside" },
@@ -365,9 +365,9 @@ function ComposerWizard({ step, onStep, onBack }: { step: number; onStep: (s: nu
   const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
 
   // Content step pulls from the shared (mock) Content library — same templates as the Content section.
-  const [templates, setTemplates] = useState<MockTemplate[]>([]);
-  const [selectedTplId, setSelectedTplId] = useState<string | null>(null);
-  useEffect(() => { setTemplates(getTemplates()); }, []);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [selectedTplId, setSelectedTplId] = useState<number | null>(null);
+  useEffect(() => { listTemplates().then(setTemplates); }, []);
   const selectedTpl = templates.find((t) => t.id === selectedTplId) || null;
 
   return (
@@ -492,7 +492,7 @@ function ComposerWizard({ step, onStep, onBack }: { step: number; onStep: (s: nu
                       </div>
                       <div className="flex-1 min-w-0">
                         <p style={{ fontSize: 13, fontWeight: 500, color: "#0F172A" }}>{t.name}</p>
-                        <p className="truncate" style={{ fontSize: 11, color: "#64748B" }}>{t.subject}</p>
+                        <p className="truncate" style={{ fontSize: 11, color: "#64748B" }}>{t.subjectDefault}</p>
                       </div>
                       {selectedTplId === t.id && <span style={{ fontSize: 10, fontWeight: 600, color: "#2563EB" }}>SELECTED</span>}
                     </label>
@@ -502,7 +502,7 @@ function ComposerWizard({ step, onStep, onBack }: { step: number; onStep: (s: nu
               {selectedTpl && (
                 <div className="rounded-lg p-3" style={{ border: "1px solid var(--border)", background: "#F8FAFC", marginTop: 4 }}>
                   <p style={{ fontSize: 10, fontWeight: 600, color: "#94A3B8", letterSpacing: "0.04em", marginBottom: 8 }}>PREVIEW — {selectedTpl.name}</p>
-                  <div style={{ fontSize: 13, color: "#0F172A" }} dangerouslySetInnerHTML={{ __html: selectedTpl.body }} />
+                  <div style={{ fontSize: 13, color: "#0F172A" }} dangerouslySetInnerHTML={{ __html: selectedTpl.htmlBody || "<span style='color:#94A3B8'>Open this template in Content to see its body.</span>" }} />
                 </div>
               )}
             </>
@@ -513,7 +513,7 @@ function ComposerWizard({ step, onStep, onBack }: { step: number; onStep: (s: nu
               <div className="space-y-4">
                 {[
                   { label: "Campaign", value: "June Newsletter 2026" },
-                  { label: "Subject", value: selectedTpl?.subject || "Your June deals are here 🎉" },
+                  { label: "Subject", value: selectedTpl?.subjectDefault || "Your June deals are here 🎉" },
                   { label: "Sender", value: "Acme Corp <hello@acmecorp.io>" },
                   { label: "Content", value: selectedTpl ? selectedTpl.name : "— no template selected —" },
                   { label: "Audience", value: "Newsletter subscribers — 48,291 recipients" },
