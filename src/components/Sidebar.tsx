@@ -4,6 +4,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import type { CustomerSubTab, NavSection } from "./navigation-types";
+import { useCurrentUser } from "@/components/SessionProvider";
 
 interface SidebarProps {
   active: NavSection;
@@ -34,6 +35,17 @@ const navItems = [
 
 export function Sidebar({ active, customerSubTab, onNavigate, onNavigateCustomer, mobileOpen = false, onClose }: SidebarProps) {
   const [expandedCustomers, setExpandedCustomers] = useState(true);
+
+  const { user } = useCurrentUser();
+  const displayName = user?.name || "Account";
+  const displayEmail = user?.email || "";
+  const initials =
+    (user?.name || "")
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0]?.toUpperCase() ?? "")
+      .join("") || "?";
 
   return (
     <>
@@ -248,11 +260,11 @@ export function Sidebar({ active, customerSubTab, onNavigate, onNavigateCustomer
             className="rounded-full flex items-center justify-center text-white"
             style={{ width: 28, height: 28, background: "#2563EB", fontSize: 11, fontWeight: 600 }}
           >
-            RN
+            {initials}
           </div>
           <div className="flex-1 min-w-0">
-            <p style={{ color: "#E2E8F0", fontSize: 12, fontWeight: 500 }}>Ryan Nguyen</p>
-            <p style={{ color: "#475569", fontSize: 11 }} className="truncate">ryan@acmecorp.io</p>
+            <p style={{ color: "#E2E8F0", fontSize: 12, fontWeight: 500 }} className="truncate">{displayName}</p>
+            <p style={{ color: "#475569", fontSize: 11 }} className="truncate">{displayEmail}</p>
           </div>
           <LogOut size={13} color="#475569" />
         </div>

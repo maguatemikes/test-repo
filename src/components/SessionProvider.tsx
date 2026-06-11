@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useRouter } from "next/navigation";
 
 export interface CurrentUser {
   name: string;
@@ -61,6 +62,7 @@ function normalize(payload: unknown): CurrentUser | null {
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -82,6 +84,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Route guard: once the session check resolves, send anonymous users to
+  // /login. Only mounted on dashboard routes (see AppShell standalone check),
+  // so it never fires on a public/auth page and cannot loop.
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace("/login");
+    }
+  }, [loading, user, router]);
+
+  // Don't render protected content once we know there's no session — the
+  // effect above is redirecting.
+  if (!loading && !user) return null;
 
   return (
     <SessionContext.Provider value={{ user, loading, refresh }}>
