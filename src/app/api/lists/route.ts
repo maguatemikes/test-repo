@@ -40,8 +40,8 @@ export async function GET(req: Request) {
       return NextResponse.json({
         ok: true,
         members: (d.rows || []).map((r: Record<string, unknown>) => ({
-          id: r.Id, name: (r.DisplayName as string) || (r.Email as string), email: r.Email,
-          source: "manual", joined: fmtDate((r.AddedAt as string) ?? null),
+          id: r.id, name: (r.displayName as string) || (r.email as string), email: r.email,
+          source: "manual", joined: fmtDate((r.addedAt as string) ?? null),
         })),
       });
     }
@@ -62,8 +62,8 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true,
       lists: (d.rows || []).map((l: Record<string, unknown>) => ({
-        id: l.Id, name: l.Name, description: (l.Description as string) || "", source: (l.Source as string) || "manual",
-        count: Number(l.MemberCount ?? 0), created: fmtDate((l.CreatedAt as string) ?? null), updated: fmtDate((l.CreatedAt as string) ?? null),
+        id: l.id, name: l.name, description: (l.description as string) || "", source: (l.source as string) || "manual",
+        count: Number(l.memberCount ?? 0), created: fmtDate((l.createdAt as string) ?? null), updated: fmtDate((l.createdAt as string) ?? null),
       })),
     });
   } catch (err) {

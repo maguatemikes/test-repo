@@ -44,16 +44,17 @@ function ruleToDisplay(group: RuleGroup): string[] {
 }
 
 const parseRule = (s: unknown): RuleGroup => {
-  try { return typeof s === "string" ? JSON.parse(s) : (s as RuleGroup); } catch { return { op: "AND", rules: [] }; }
+  try { if (typeof s === "string") return JSON.parse(s); if (s && typeof s === "object") return s as RuleGroup; } catch { /* fall through */ }
+  return { op: "AND", rules: [] };
 };
 const fmtDate = (d: string | null) =>
   d ? new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
 const toMembers = (rows: Record<string, unknown>[]) =>
   (rows || []).map((r) => ({
-    name: (r.DisplayName as string) || (r.Email as string),
-    email: r.Email as string,
-    spend: `$${Number(r.LifetimeSpend ?? 0).toLocaleString()}`,
-    lastOrder: fmtDate((r.LastOrderAt as string) ?? null),
+    name: (r.displayName as string) || (r.email as string),
+    email: r.email as string,
+    spend: `$${Number(r.lifetimeSpend ?? 0).toLocaleString()}`,
+    lastOrder: fmtDate((r.lastOrderAt as string) ?? null),
   }));
 
 async function api(cookie: string, path: string, init?: RequestInit) {
@@ -76,7 +77,7 @@ export async function GET(req: Request) {
       const res = await api(cookie, `/segments/${encodeURIComponent(editId)}`);
       if (!res.ok) return NextResponse.json({ ok: false, error: "Not found" }, { status: res.status });
       const s = await res.json();
-      return NextResponse.json({ ok: true, segment: { id: String(s.Id), name: s.Name, rule: parseRule(s.RuleDefinition) } });
+      return NextResponse.json({ ok: true, segment: { id: String(s.id), name: s.name, rule: parseRule(s.ruleDefinition) } });
     }
 
     if (previewId) {
@@ -86,21 +87,14 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: true, members: toMembers(d.rows) });
     }
 
-    // list + live counts (crm-api MemberCount is not materialized → compute via preview)
+    // list — crm-api now returns memberCount directly, so no per-segment N+1 preview.
     const res = await api(cookie, `/segments`);
     if (!res.ok) return NextResponse.json({ ok: true, segments: [] });
     const list = await res.json();
-    const segments = await Promise.all(
-      (list.rows || []).map(async (s: Record<string, unknown>) => {
-        const rule = parseRule(s.RuleDefinition);
-        let count = Number(s.MemberCount ?? 0);
-        try {
-          const pr = await api(cookie, `/segments/preview`, { method: "POST", body: JSON.stringify({ ruleDefinition: rule }) });
-          if (pr.ok) count = (await pr.json()).count ?? count;
-        } catch {}
-        return { id: String(s.Id), name: s.Name, rules: ruleToDisplay(rule), count, status: "ready" as const };
-      }),
-    );
+    const segments = (list.rows || []).map((s: Record<string, unknown>) => {
+      const rule = parseRule(s.ruleDefinition);
+      return { id: String(s.id), name: s.name, rules: ruleToDisplay(rule), count: Number(s.memberCount ?? 0), status: "ready" as const };
+    });
     return NextResponse.json({ ok: true, segments });
   } catch (err) {
     return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 502 });
