@@ -139,6 +139,21 @@ export function ImportCsvModal({ onClose, context = "customers", listName, onImp
     }
   };
 
+  const downloadSample = () => {
+    const csv = [
+      "email,first_name,last_name,phone,city,country,tags",
+      "jane@example.com,Jane,Doe,+1 555 0100,New York,USA,VIP",
+      "john@example.com,John,Smith,+44 20 7946 0958,London,UK,New",
+    ].join("\n") + "\n";
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "netx-import-sample.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const emailMapped = Object.values(mapping).includes("email");
   const mappedCols = Object.values(mapping).filter((v) => v !== "skip").length;
 
@@ -228,7 +243,7 @@ export function ImportCsvModal({ onClose, context = "customers", listName, onImp
                   <p style={{ fontSize: 11, color: "#3B82F6", marginTop: 1 }}>
                     Your CSV must include an <strong>email</strong> column. Additional columns: first_name, last_name, phone, city, country, tags.
                   </p>
-                  <button style={{ fontSize: 11, color: "#2563EB", marginTop: 4, textDecoration: "underline" }}>
+                  <button onClick={downloadSample} style={{ fontSize: 11, color: "#2563EB", marginTop: 4, textDecoration: "underline", cursor: "pointer" }}>
                     Download sample CSV
                   </button>
                 </div>
