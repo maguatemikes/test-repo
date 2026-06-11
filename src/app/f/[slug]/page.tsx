@@ -39,17 +39,17 @@ export default async function HostedFormPage({
     );
   }
 
-  if (!form || form.Status === "archived") {
+  if (!form || form.status === "archived") {
     notFound();
   }
 
   return (
     <HostedForm
       slug={slug}
-      name={form.Name as string}
-      fields={(parse(form.FieldsJson) as never) ?? []}
-      design={(parse(form.DesignJson) as never) ?? null}
-      success={(parse(form.SuccessBehaviorJson) as never) ?? null}
+      name={form.name as string}
+      fields={(parse(form.fieldsJson) as never) ?? []}
+      design={(parse(form.designJson) as never) ?? null}
+      success={(parse(form.successBehaviorJson) as never) ?? null}
       embed={embed === "1"}
     />
   );
