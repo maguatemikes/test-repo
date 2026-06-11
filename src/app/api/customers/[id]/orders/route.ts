@@ -22,13 +22,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     const data = await res.json();
     const orders = (data.rows || []).map((o: Record<string, unknown>) => ({
-      id: o.Id,
-      orderNumber: o.OrderNumber,
-      total: o.Total,
-      status: o.Status,
-      date: o.Date,
-      itemCount: o.ItemCount,
-      channel: o.MarketplaceName || o.Channel,
+      id: o.id ?? o.Id,
+      orderNumber: o.orderNumber ?? o.OrderNumber,
+      total: o.total ?? o.Total,
+      status: o.status ?? o.Status,
+      date: o.date ?? o.Date,
+      itemCount: o.itemCount ?? o.ItemCount,
+      channel: o.marketplaceName ?? o.MarketplaceName ?? o.channel ?? o.Channel,
     }));
     return NextResponse.json({ ok: true, orders, total: data.total });
   } catch {

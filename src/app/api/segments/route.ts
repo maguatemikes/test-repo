@@ -81,20 +81,31 @@ export async function GET(req: Request) {
     }
 
     if (previewId) {
-      const res = await api(cookie, `/segments/${encodeURIComponent(previewId)}/members?pageSize=20`);
-      if (!res.ok) return NextResponse.json({ ok: true, members: [] });
-      const d = await res.json();
-      return NextResponse.json({ ok: true, members: toMembers(d.rows) });
+      // crm-api segment /members is unmaterialized (returns 0) → compute live from the rule.
+      const sres = await api(cookie, `/segments/${encodeURIComponent(previewId)}`);
+      if (!sres.ok) return NextResponse.json({ ok: true, members: [] });
+      const seg = await sres.json();
+      const pr = await api(cookie, `/segments/preview`, { method: "POST", body: JSON.stringify({ ruleDefinition: parseRule(seg.ruleDefinition) }) });
+      if (!pr.ok) return NextResponse.json({ ok: true, members: [] });
+      return NextResponse.json({ ok: true, members: toMembers((await pr.json()).sample) });
     }
 
-    // list — crm-api now returns memberCount directly, so no per-segment N+1 preview.
+    // list — crm-api memberCount is unmaterialized (always 0, lastRefreshedAt null),
+    // so compute live counts via preview. (Backend ask: materialize memberCount.)
     const res = await api(cookie, `/segments`);
     if (!res.ok) return NextResponse.json({ ok: true, segments: [] });
     const list = await res.json();
-    const segments = (list.rows || []).map((s: Record<string, unknown>) => {
-      const rule = parseRule(s.ruleDefinition);
-      return { id: String(s.id), name: s.name, rules: ruleToDisplay(rule), count: Number(s.memberCount ?? 0), status: "ready" as const };
-    });
+    const segments = await Promise.all(
+      (list.rows || []).map(async (s: Record<string, unknown>) => {
+        const rule = parseRule(s.ruleDefinition);
+        let count = Number(s.memberCount ?? 0);
+        try {
+          const pr = await api(cookie, `/segments/preview`, { method: "POST", body: JSON.stringify({ ruleDefinition: rule }) });
+          if (pr.ok) count = (await pr.json()).count ?? count;
+        } catch { /* keep stored count */ }
+        return { id: String(s.id), name: s.name, rules: ruleToDisplay(rule), count, status: "ready" as const };
+      }),
+    );
     return NextResponse.json({ ok: true, segments });
   } catch (err) {
     return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 502 });

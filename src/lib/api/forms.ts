@@ -22,15 +22,15 @@ export async function fetchForms(): Promise<FormRow[]> {
   return Promise.all(
     (d.rows || []).map(async (f: Record<string, unknown>) => {
       let cfg: Record<string, unknown> = {};
-      try { const dr = await api(`/forms/${f.Id}`); if (dr.ok) cfg = await dr.json(); } catch {}
+      try { const dr = await api(`/forms/${f.id}`); if (dr.ok) cfg = await dr.json(); } catch {}
       return {
-        id: f.Id, name: f.Name, slug: f.Slug, type: f.Type, status: f.Status,
-        impressions: f.Impressions, submissions: f.Submissions, targetListId: f.TargetListId,
-        fields: parse(cfg.FieldsJson) ?? [],
-        design: parse(cfg.DesignJson),
-        targeting: parse(cfg.TargetingJson),
-        success: parse(cfg.SuccessBehaviorJson),
-        updatedAt: fmt((f.CreatedAt as string) ?? null),
+        id: f.id, name: f.name, slug: f.slug, type: f.type, status: f.status,
+        impressions: f.impressions, submissions: f.submissions, targetListId: f.targetListId,
+        fields: parse(cfg.fieldsJson) ?? [],
+        design: parse(cfg.designJson),
+        targeting: parse(cfg.targetingJson),
+        success: parse(cfg.successBehaviorJson),
+        updatedAt: fmt((f.createdAt as string) ?? null),
       } as FormRow;
     }),
   );
@@ -42,5 +42,5 @@ export async function fetchFormLists(): Promise<{ id: number; name: string }[]> 
   const res = await api(`/lists`);
   if (!res.ok) return [];
   const d = await res.json();
-  return (d.rows || []).map((l: Record<string, unknown>) => ({ id: l.Id as number, name: l.Name as string }));
+  return (d.rows || []).map((l: Record<string, unknown>) => ({ id: l.id as number, name: l.name as string }));
 }
