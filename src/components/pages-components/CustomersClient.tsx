@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useTransition } from "react";
 import { CustomersView } from "./CustomersView";
 import { customerSubTabToPath, type CustomerSubTab } from "@/components/navigation-types";
 
@@ -21,6 +22,7 @@ export function CustomersClient({
   dbCustomers, total = 0, page = 1, pageSize = 100, query = "", tag = "", source = "", channel = "", channels = [], sources = [],
 }: Props) {
   const router = useRouter();
+  const [pending, startTransition] = useTransition();
 
   const buildUrl = (overrides: Partial<{ q: string; tag: string; source: string; channel: string; page: string }>) => {
     const merged = { q: query, tag, source, channel, page: String(page), ...overrides };
@@ -31,7 +33,9 @@ export function CustomersClient({
     if (merged.channel) sp.set("channel", merged.channel);
     if (merged.page && merged.page !== "1") sp.set("page", merged.page);
     const qs = sp.toString();
-    router.replace(qs ? `/customers?${qs}` : "/customers", { scroll: false });
+    // useTransition keeps the current list visible + exposes a pending flag while the
+    // server re-fetches — no hard "snap", and we can show a loading state.
+    startTransition(() => router.replace(qs ? `/customers?${qs}` : "/customers", { scroll: false }));
   };
 
   return (
@@ -48,6 +52,7 @@ export function CustomersClient({
       serverChannel={channel}
       channels={channels}
       sources={sources}
+      pending={pending}
       onSearch={(q) => buildUrl({ q, page: "1" })}
       onFilter={(key, value) => buildUrl({ [key]: value, page: "1" })}
       onPage={(p) => buildUrl({ page: String(p) })}

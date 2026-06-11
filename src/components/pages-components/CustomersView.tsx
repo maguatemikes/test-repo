@@ -451,6 +451,7 @@ interface CustomersViewProps {
   serverChannel?: string;
   channels?: string[];
   sources?: string[];
+  pending?: boolean;
   onSearch?: (q: string) => void;
   onFilter?: (key: "tag" | "source" | "channel", value: string) => void;
   onPage?: (p: number) => void;
@@ -459,13 +460,16 @@ interface CustomersViewProps {
 export function CustomersView({
   initialTab = "customers", onSubTabChange, dbCustomers,
   total = 0, page = 1, pageSize = 100, serverQuery = "",
-  serverTag = "", serverSource = "", serverChannel = "", channels = [], sources = [],
+  serverTag = "", serverSource = "", serverChannel = "", channels = [], sources = [], pending = false,
   onSearch, onFilter, onPage,
 }: CustomersViewProps) {
   // Server-driven list (search + filters + pagination happen in the DB).
   const customers = dbCustomers ?? [];
   const [subTab, setSubTab] = useState<SubTab>(initialTab);
   const [query, setQuery] = useState(serverQuery);
+  // Optimistic filter highlight — flips instantly on click, reconciles when the server responds.
+  const [optimisticTag, setOptimisticTag] = useState(serverTag);
+  useEffect(() => { setOptimisticTag(serverTag); }, [serverTag]);
   const [colsOpen, setColsOpen] = useState(false);
   const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(CUSTOMER_COLUMNS.map((c) => [c.key, true])),
@@ -653,11 +657,12 @@ export function CustomersView({
         <div className="flex items-center gap-2 flex-wrap">
           {chipFilters.map((chip) => {
             const Icon = chip.icon;
-            const isActive = chip.value === "all" ? !serverTag : serverTag === chip.value;
+            const value = chip.value === "all" ? "" : chip.value;
+            const isActive = chip.value === "all" ? !optimisticTag : optimisticTag === chip.value;
             return (
               <button
                 key={chip.value}
-                onClick={() => onFilter?.("tag", chip.value === "all" ? "" : chip.value)}
+                onClick={() => { setOptimisticTag(value); onFilter?.("tag", value); }}
                 className="flex items-center gap-1.5 rounded-full px-3 py-1.5"
                 style={{
                   fontSize: 12, fontWeight: 500,
@@ -761,8 +766,16 @@ export function CustomersView({
       </div>
 
       {/* Table */}
-      <div className="rounded-lg overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
-        <div className="overflow-x-auto"><table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <div className="rounded-lg overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid var(--border)", position: "relative" }}>
+        {pending && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center" style={{ background: "rgba(255,255,255,0.55)" }}>
+            <div className="flex items-center gap-2 rounded-full px-3 py-1.5" style={{ background: "#FFFFFF", border: "1px solid var(--border)", boxShadow: "0 2px 8px rgba(15,23,42,0.08)" }}>
+              <RefreshCw size={13} color="#2563EB" className="animate-spin" />
+              <span style={{ fontSize: 12, color: "#64748B", fontFamily: font }}>Filtering…</span>
+            </div>
+          </div>
+        )}
+        <div className="overflow-x-auto" style={{ opacity: pending ? 0.55 : 1, transition: "opacity 0.15s ease", pointerEvents: pending ? "none" : "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#F8FAFC", borderBottom: "1px solid var(--border)" }}>
               <th style={{ padding: "9px 14px", width: 40 }}>
