@@ -41,7 +41,11 @@ export function useCurrentUser() {
 function normalize(payload: unknown): CurrentUser | null {
   if (!payload || typeof payload !== "object") return null;
   const root = payload as Record<string, unknown>;
-  const u = (root.user ?? root) as Record<string, unknown>;
+  // /api/me returns { ok, user: { user: {email, displayName}, org, role } } — the
+  // user fields are nested one level below role/org. Dig in, but stay tolerant of a
+  // flat shape too (wrapper.user ?? wrapper).
+  const wrapper = (root.user ?? root) as Record<string, unknown>;
+  const u = (wrapper.user ?? wrapper) as Record<string, unknown>;
 
   const name =
     (u.name as string) ??
@@ -54,7 +58,7 @@ function normalize(payload: unknown): CurrentUser | null {
   return {
     name: name || email,
     email,
-    role: (u.role as string) ?? (u.roleName as string) ?? undefined,
+    role: (wrapper.role as string) ?? (u.role as string) ?? (u.roleName as string) ?? undefined,
     avatarUrl: (u.avatarUrl as string) ?? (u.avatar as string) ?? undefined,
   };
 }
