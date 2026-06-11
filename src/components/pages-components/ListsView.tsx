@@ -41,6 +41,11 @@ export function ListsView({ }: ListsViewProps) {
   const [addQuery, setAddQuery] = useState("");
   const [addResults, setAddResults] = useState<Candidate[]>([]);
 
+  // New-list modal (replaces the native window.prompt)
+  const [newOpen, setNewOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newBusy, setNewBusy] = useState(false);
+
   const loadLists = useCallback(() => {
     setLoading(true);
     fetch("/api/lists")
@@ -62,12 +67,14 @@ export function ListsView({ }: ListsViewProps) {
 
   const openDetail = (id: number) => { setOpenList(id); setAdding(false); setAddQuery(""); setAddResults([]); loadMembers(id); };
 
-  const newList = async () => {
-    const name = window.prompt("New list name:");
-    if (!name || !name.trim()) return;
-    const res = await fetch("/api/lists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim() }) });
-    const d = await res.json();
-    if (d.ok) loadLists(); else alert(d.error || "Failed to create list");
+  const createList = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    setNewBusy(true);
+    const res = await fetch("/api/lists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+    const d = await res.json().catch(() => ({}));
+    setNewBusy(false);
+    if (d.ok) { setNewOpen(false); setNewName(""); loadLists(); } else alert(d.error || "Failed to create list");
   };
 
   const removeList = async (id: number) => {
@@ -227,6 +234,23 @@ export function ListsView({ }: ListsViewProps) {
 
   return (
     <div className="p-6 space-y-4" style={{ fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif" }}>
+      {newOpen && (
+        <div onClick={() => setNewOpen(false)} className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(15,23,42,0.4)" }}>
+          <div onClick={(e) => e.stopPropagation()} className="rounded-xl" style={{ background: "#FFFFFF", width: 400, maxWidth: "90vw", padding: 20, fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif" }}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 style={{ fontSize: 15, fontWeight: 600, color: "#0F172A" }}>New list</h3>
+              <button onClick={() => setNewOpen(false)} style={{ color: "#94A3B8", cursor: "pointer" }}><X size={16} /></button>
+            </div>
+            <p style={{ fontSize: 12, color: "#64748B", marginBottom: 14 }}>A static list you build by hand or fill from a form opt-in.</p>
+            <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") createList(); }} placeholder="e.g. VIP customers"
+              style={{ width: "100%", fontSize: 13, padding: "8px 12px", border: "1px solid var(--border)", borderRadius: 6, outline: "none", color: "#0F172A", boxSizing: "border-box" }} />
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setNewOpen(false)} disabled={newBusy} style={{ fontSize: 12, fontWeight: 500, color: "#64748B", background: "#F1F5F9", border: "none", padding: "8px 14px", borderRadius: 6, cursor: "pointer" }}>Cancel</button>
+              <button onClick={createList} disabled={newBusy || !newName.trim()} style={{ fontSize: 12, fontWeight: 500, color: "#FFFFFF", background: "#2563EB", border: "none", padding: "8px 16px", borderRadius: 6, cursor: newBusy || !newName.trim() ? "not-allowed" : "pointer", opacity: newBusy || !newName.trim() ? 0.6 : 1 }}>{newBusy ? "Creating…" : "Create list"}</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <p style={{ fontSize: 12, color: "#64748B" }}>
           {loading ? "Loading lists…" : (
@@ -234,7 +258,7 @@ export function ListsView({ }: ListsViewProps) {
             <strong style={{ fontWeight: 600, color: "#0F172A" }}>{totalMembers.toLocaleString()}</strong> total members</>
           )}
         </p>
-        <button onClick={newList} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF", cursor: "pointer" }}>
+        <button onClick={() => setNewOpen(true)} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF", cursor: "pointer" }}>
           <Plus size={13} /> New List
         </button>
       </div>
@@ -274,7 +298,7 @@ export function ListsView({ }: ListsViewProps) {
                   title={query ? "No lists match your search" : "No lists yet"}
                   description={query ? "Try a different search term." : "Lists are audiences you build by hand — add customers manually, or collect them via a form opt-in."}
                   action={!query ? (
-                    <button onClick={newList} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF", cursor: "pointer" }}>
+                    <button onClick={() => setNewOpen(true)} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF", cursor: "pointer" }}>
                       <Plus size={13} /> New List
                     </button>
                   ) : undefined}
