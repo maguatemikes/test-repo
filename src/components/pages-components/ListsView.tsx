@@ -4,6 +4,7 @@ import { List, Plus, MoreHorizontal, Upload, Download, Trash2, Search, X, Chevro
 import { useState, useEffect, useCallback } from "react";
 import { ImportCsvModal } from "../ImportCsvModal";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 const SkBar = ({ w, h = 12, r = 6 }: { w: number; h?: number; r?: number }) => (
   <div className="animate-pulse" style={{ width: w, height: h, borderRadius: r, background: "#E2E8F0", flexShrink: 0 }} />
@@ -46,6 +47,10 @@ export function ListsView({ }: ListsViewProps) {
   const [newName, setNewName] = useState("");
   const [newBusy, setNewBusy] = useState(false);
 
+  // Delete-list confirm
+  const [confirmTarget, setConfirmTarget] = useState<{ id: number; name: string } | null>(null);
+  const [removing, setRemoving] = useState(false);
+
   const loadLists = useCallback(() => {
     setLoading(true);
     fetch("/api/lists")
@@ -77,11 +82,13 @@ export function ListsView({ }: ListsViewProps) {
     if (d.ok) { setNewOpen(false); setNewName(""); loadLists(); } else alert(d.error || "Failed to create list");
   };
 
-  const removeList = async (id: number) => {
-    if (!window.confirm("Delete this list? Members are removed from the list (customers are not deleted).")) return;
-    const res = await fetch(`/api/lists?id=${id}`, { method: "DELETE" });
-    const d = await res.json();
-    if (d.ok) { if (openList === id) setOpenList(null); loadLists(); } else alert(d.error || "Failed to delete");
+  const doRemoveList = async () => {
+    if (!confirmTarget) return;
+    setRemoving(true);
+    const res = await fetch(`/api/lists?id=${confirmTarget.id}`, { method: "DELETE" });
+    const d = await res.json().catch(() => ({}));
+    setRemoving(false);
+    if (d.ok) { if (openList === confirmTarget.id) setOpenList(null); setConfirmTarget(null); loadLists(); } else alert(d.error || "Failed to delete");
   };
 
   const searchAdd = (q: string) => {
@@ -234,6 +241,16 @@ export function ListsView({ }: ListsViewProps) {
 
   return (
     <div className="p-6 space-y-4" style={{ fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif" }}>
+      <ConfirmDialog
+        open={!!confirmTarget}
+        danger
+        title="Delete list?"
+        message={confirmTarget ? `"${confirmTarget.name}" will be removed. Members are taken off the list — the customers themselves are not deleted.` : ""}
+        confirmLabel="Delete list"
+        busy={removing}
+        onConfirm={doRemoveList}
+        onCancel={() => setConfirmTarget(null)}
+      />
       {newOpen && (
         <div onClick={() => setNewOpen(false)} className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(15,23,42,0.4)" }}>
           <div onClick={(e) => e.stopPropagation()} className="rounded-xl" style={{ background: "#FFFFFF", width: 400, maxWidth: "90vw", padding: 20, fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif" }}>
@@ -332,7 +349,7 @@ export function ListsView({ }: ListsViewProps) {
                   <td style={{ padding: "11px 14px" }}>
                     <div className="flex items-center gap-1">
                       <button style={{ color: "#94A3B8" }} onClick={(e) => e.stopPropagation()} title="Export"><Download size={13} /></button>
-                      <button style={{ color: "#94A3B8" }} onClick={(e) => { e.stopPropagation(); removeList(l.id); }} title="Delete list"><Trash2 size={13} /></button>
+                      <button style={{ color: "#94A3B8" }} onClick={(e) => { e.stopPropagation(); setConfirmTarget({ id: l.id, name: l.name }); }} title="Delete list"><Trash2 size={13} /></button>
                       <button style={{ color: "#94A3B8" }} onClick={(e) => e.stopPropagation()}><MoreHorizontal size={13} /></button>
                     </div>
                   </td>
