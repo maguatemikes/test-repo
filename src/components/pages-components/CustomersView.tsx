@@ -69,6 +69,10 @@ const tagStyles: Record<string, { bg: string; color: string }> = {
   "High LTV": { bg: "#F5F3FF", color: "#6D28D9" },
 };
 
+const SOURCE_LABELS: Record<string, string> = {
+  netx_backfill: "Import", csv_import: "CSV Import", form: "Form", api: "API", direct: "Direct",
+};
+
 type SubTab = "customers" | "lists" | "segments";
 type DrawerTab = "overview" | "orders" | "engagement" | "activity";
 
@@ -84,7 +88,7 @@ function avatarColor(id: string) {
   return colors[idx];
 }
 
-type CRow = (typeof mockCustomers)[number] & { channel?: string; source?: string };
+type CRow = (typeof mockCustomers)[number] & { channel?: string; source?: string; manualTags?: { name: string; color: string }[] };
 
 // Column-driven table so columns can be shown/hidden.
 const CUSTOMER_COLUMNS: { key: string; label: string; render: (c: CRow) => React.ReactNode }[] = [
@@ -110,6 +114,12 @@ const CUSTOMER_COLUMNS: { key: string; label: string; render: (c: CRow) => React
           const ts = tagStyles[tag] || { bg: "#F1F5F9", color: "#64748B" };
           return <span key={tag} className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, background: ts.bg, color: ts.color }}>{tag}</span>;
         })}
+        {(c.manualTags ?? []).map((t) => (
+          <span key={`m-${t.name}`} className="rounded-full px-2 py-0.5 inline-flex items-center gap-1"
+            style={{ fontSize: 10, fontWeight: 500, background: `${t.color}1A`, color: t.color, border: `1px solid ${t.color}40` }}>
+            <span style={{ width: 5, height: 5, borderRadius: 999, background: t.color, display: "inline-block" }} />{t.name}
+          </span>
+        ))}
       </div>
     ),
   },
@@ -431,7 +441,7 @@ interface CustomersViewProps {
   initialTab?: SubTab;
   onSubTabChange?: (tab: SubTab) => void;
   /** Current page of customers from the DB (already searched + paginated server-side). */
-  dbCustomers?: ((typeof mockCustomers)[number] & { channel?: string; source?: string })[];
+  dbCustomers?: ((typeof mockCustomers)[number] & { channel?: string; source?: string; manualTags?: { name: string; color: string }[] })[];
   total?: number;
   page?: number;
   pageSize?: number;
@@ -440,6 +450,7 @@ interface CustomersViewProps {
   serverSource?: string;
   serverChannel?: string;
   channels?: string[];
+  sources?: string[];
   onSearch?: (q: string) => void;
   onFilter?: (key: "tag" | "source" | "channel", value: string) => void;
   onPage?: (p: number) => void;
@@ -448,7 +459,7 @@ interface CustomersViewProps {
 export function CustomersView({
   initialTab = "customers", onSubTabChange, dbCustomers,
   total = 0, page = 1, pageSize = 100, serverQuery = "",
-  serverTag = "", serverSource = "", serverChannel = "", channels = [],
+  serverTag = "", serverSource = "", serverChannel = "", channels = [], sources = [],
   onSearch, onFilter, onPage,
 }: CustomersViewProps) {
   // Server-driven list (search + filters + pagination happen in the DB).
@@ -667,9 +678,7 @@ export function CustomersView({
         <select value={serverSource} onChange={(e) => onFilter?.("source", e.target.value)}
           style={{ fontSize: 12, padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 8, background: "#FFFFFF", color: "#64748B", fontFamily: font, cursor: "pointer" }}>
           <option value="">All sources</option>
-          <option value="form">Form</option>
-          <option value="netx_backfill">Import</option>
-          <option value="api">API</option>
+          {sources.map((s) => <option key={s} value={s}>{SOURCE_LABELS[s] || s}</option>)}
         </select>
 
         {/* Channel filter */}

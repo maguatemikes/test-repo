@@ -14,10 +14,11 @@ type Props = {
   source?: string;
   channel?: string;
   channels?: string[];
+  sources?: string[];
 };
 
 export function CustomersClient({
-  dbCustomers, total = 0, page = 1, pageSize = 100, query = "", tag = "", source = "", channel = "", channels = [],
+  dbCustomers, total = 0, page = 1, pageSize = 100, query = "", tag = "", source = "", channel = "", channels = [], sources = [],
 }: Props) {
   const router = useRouter();
 
@@ -46,6 +47,7 @@ export function CustomersClient({
       serverSource={source}
       serverChannel={channel}
       channels={channels}
+      sources={sources}
       onSearch={(q) => buildUrl({ q, page: "1" })}
       onFilter={(key, value) => buildUrl({ [key]: value, page: "1" })}
       onPage={(p) => buildUrl({ page: String(p) })}

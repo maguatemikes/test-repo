@@ -1,4 +1,4 @@
-import { fetchCustomers } from "@/lib/api/customers";
+import { fetchCustomers, fetchFacets } from "@/lib/api/customers";
 import { CustomersClient } from "@/components/pages-components/CustomersClient";
 
 const PAGE_SIZE = 50; // matches crm-api default
@@ -27,6 +27,15 @@ function computeTags(r: { lifetimeSpend?: number | null; orderCount?: number | n
   return tags;
 }
 
+// crm-api now returns computed behavioral flags per row — map to display labels.
+const FLAG_LABELS: Record<string, string> = {
+  vip: "VIP", loyal: "Loyal", at_risk: "At Risk", new: "New",
+  high_ltv: "High LTV", has_refund: "Has Refund", churned: "Churned",
+};
+const flagLabel = (f: string) => FLAG_LABELS[f] || f.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+// "subscribed" is near-universal and already implied by status — keep it out of the chip row.
+const flagsToTags = (flags: string[]) => flags.filter((f) => f !== "subscribed").map(flagLabel);
+
 export default async function CustomersPage({
   searchParams,
 }: {
@@ -47,14 +56,18 @@ export default async function CustomersPage({
     "Has Refund": "has_refund",
     "Subscribed": "subscribed",
   };
-  const res = await fetchCustomers({ q, page, pageSize: PAGE_SIZE, filter: FILTER_MAP[tag] || "" });
+  const [res, facets] = await Promise.all([
+    fetchCustomers({ q, page, pageSize: PAGE_SIZE, filter: FILTER_MAP[tag] || "", channel, source }),
+    fetchFacets(),
+  ]);
 
   const dbCustomers: React.ComponentProps<typeof CustomersClient>["dbCustomers"] = res.rows.map((r) => ({
     id: String(r.id),
     name: r.displayName || [r.firstName, r.lastName].filter(Boolean).join(" ") || r.email,
     email: r.email,
     phone: "—",
-    tags: computeTags(r),
+    tags: r.flags?.length ? flagsToTags(r.flags) : computeTags(r),
+    manualTags: (r.tags ?? []).map((t) => ({ name: t.name, color: t.color })),
     spend: `$${Number(r.lifetimeSpend ?? 0).toLocaleString()}`,
     ltv: Number(r.lifetimeSpend ?? 0),
     lastOrder: fmt(r.lastOrderAt),
@@ -63,7 +76,7 @@ export default async function CustomersPage({
     location: "—",
     joined: fmt(r.createdAt),
     channel: r.channels?.[0] || "—",
-    source: "—", // crm-api customer payload doesn't include source
+    source: r.source || "—",
   }));
 
   return (
@@ -76,7 +89,8 @@ export default async function CustomersPage({
       tag={tag}
       source={source}
       channel={channel}
-      channels={[]}
+      channels={facets.channels}
+      sources={facets.sources}
     />
   );
 }
