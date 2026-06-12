@@ -1,6 +1,6 @@
 "use client";
 
-import { useEditor, EditorContent, type Editor } from "@tiptap/react";
+import { useEditor, EditorContent, BubbleMenu, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
@@ -10,10 +10,12 @@ import { Bold, Italic, Strikethrough, Heading1, Heading2, Heading3, List, ListOr
 const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
 
 /** TipTap block editor — Beehiiv-style writing experience. Emits HTML + JSON. */
-export function RichTextEditor({ value, onChange, placeholder = "Write your email…" }: {
+export function RichTextEditor({ value, onChange, placeholder = "Write your email…", bare = false }: {
   value?: string;
   onChange?: (html: string, json: unknown) => void;
   placeholder?: string;
+  /** Borderless, blends into a full-page canvas (Beehiiv style). */
+  bare?: boolean;
 }) {
   const editor = useEditor({
     immediatelyRender: false, // avoid Next.js SSR hydration mismatch
@@ -28,16 +30,38 @@ export function RichTextEditor({ value, onChange, placeholder = "Write your emai
     editorProps: { attributes: { class: "nx-prose" } },
   });
 
-  if (!editor) return <div style={{ height: 300, background: "#F8FAFC", borderRadius: 8 }} />;
+  if (!editor) return <div style={{ height: 300, background: bare ? "transparent" : "#F8FAFC", borderRadius: 8 }} />;
+
+  const outer = bare
+    ? { background: "transparent", fontFamily: font }
+    : { border: "1px solid var(--border)", background: "#FFFFFF", fontFamily: font, borderRadius: 8, overflow: "hidden" };
 
   return (
-    <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)", background: "#FFFFFF", fontFamily: font }}>
-      <Toolbar editor={editor} />
-      <div style={{ maxHeight: 420, overflowY: "auto" }}>
+    <div style={outer}>
+      <Toolbar editor={editor} bare={bare} />
+      <BubbleMenu editor={editor} tippyOptions={{ duration: 120 }}>
+        <div className="flex items-center gap-0.5 rounded-lg px-1 py-0.5" style={{ background: "#0F172A", boxShadow: "0 4px 16px rgba(0,0,0,0.25)" }}>
+          <BubbleBtn active={editor.isActive("bold")} on={() => editor.chain().focus().toggleBold().run()}><Bold size={13} /></BubbleBtn>
+          <BubbleBtn active={editor.isActive("italic")} on={() => editor.chain().focus().toggleItalic().run()}><Italic size={13} /></BubbleBtn>
+          <BubbleBtn active={editor.isActive("strike")} on={() => editor.chain().focus().toggleStrike().run()}><Strikethrough size={13} /></BubbleBtn>
+          <BubbleBtn active={editor.isActive("heading", { level: 2 })} on={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><Heading2 size={14} /></BubbleBtn>
+          <BubbleBtn active={editor.isActive("link")} on={() => { const u = window.prompt("Link URL", "https://"); if (u) editor.chain().focus().extendMarkRange("link").setLink({ href: u }).run(); }}><Link2 size={13} /></BubbleBtn>
+        </div>
+      </BubbleMenu>
+      <div style={bare ? {} : { maxHeight: 420, overflowY: "auto" }}>
         <EditorContent editor={editor} />
       </div>
-      <ProseStyles />
+      <ProseStyles bare={bare} />
     </div>
+  );
+}
+
+function BubbleBtn({ on, active, children }: { on: () => void; active?: boolean; children: React.ReactNode }) {
+  return (
+    <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={on} className="flex items-center justify-center rounded"
+      style={{ width: 26, height: 26, color: active ? "#60A5FA" : "#E2E8F0", background: active ? "rgba(96,165,250,0.15)" : "transparent", cursor: "pointer" }}>
+      {children}
+    </button>
   );
 }
 
@@ -51,7 +75,7 @@ function Btn({ on, active, disabled, title, children }: { on: () => void; active
   );
 }
 
-function Toolbar({ editor }: { editor: Editor }) {
+function Toolbar({ editor, bare = false }: { editor: Editor; bare?: boolean }) {
   const sep = <div style={{ width: 1, height: 18, background: "var(--border)", margin: "0 3px" }} />;
   const addLink = () => {
     const prev = editor.getAttributes("link").href as string | undefined;
@@ -65,7 +89,7 @@ function Toolbar({ editor }: { editor: Editor }) {
     if (url) editor.chain().focus().setImage({ src: url }).run();
   };
   return (
-    <div className="flex items-center flex-wrap gap-0.5 px-2 py-1.5" style={{ borderBottom: "1px solid var(--border)", background: "#F8FAFC", position: "sticky", top: 0, zIndex: 2 }}>
+    <div className="flex items-center flex-wrap gap-0.5 px-2 py-1.5" style={{ border: "1px solid var(--border)", background: "#FFFFFF", position: "sticky", top: 0, zIndex: 2, borderRadius: bare ? 10 : 0, borderLeftWidth: bare ? 1 : 0, borderRightWidth: bare ? 1 : 0, borderTopWidth: bare ? 1 : 0, marginBottom: bare ? 4 : 0, boxShadow: bare ? "0 1px 4px rgba(15,23,42,0.06)" : "none" }}>
       <Btn title="Bold" active={editor.isActive("bold")} on={() => editor.chain().focus().toggleBold().run()}><Bold size={14} /></Btn>
       <Btn title="Italic" active={editor.isActive("italic")} on={() => editor.chain().focus().toggleItalic().run()}><Italic size={14} /></Btn>
       <Btn title="Strikethrough" active={editor.isActive("strike")} on={() => editor.chain().focus().toggleStrike().run()}><Strikethrough size={14} /></Btn>
@@ -88,15 +112,19 @@ function Toolbar({ editor }: { editor: Editor }) {
   );
 }
 
-function ProseStyles() {
+function ProseStyles({ bare = false }: { bare?: boolean }) {
+  const fs = bare ? 16.5 : 14;
+  const lh = bare ? 1.75 : 1.6;
+  const pad = bare ? "12px 2px 240px" : "16px 18px";
+  const minH = bare ? 360 : 260;
   return (
     <style>{`
-      .nx-prose { min-height: 260px; padding: 16px 18px; outline: none; font-size: 14px; line-height: 1.6; color: #0F172A; font-family: ${font}; }
+      .nx-prose { min-height: ${minH}px; padding: ${pad}; outline: none; font-size: ${fs}px; line-height: ${lh}; color: #1A2231; font-family: ${font}; }
       .nx-prose:focus { outline: none; }
-      .nx-prose p { margin: 0 0 10px; }
-      .nx-prose h1 { font-size: 26px; font-weight: 700; margin: 18px 0 8px; line-height: 1.25; }
-      .nx-prose h2 { font-size: 20px; font-weight: 700; margin: 16px 0 6px; line-height: 1.3; }
-      .nx-prose h3 { font-size: 16px; font-weight: 600; margin: 14px 0 6px; }
+      .nx-prose p { margin: 0 0 ${bare ? 16 : 10}px; }
+      .nx-prose h1 { font-size: ${bare ? 34 : 26}px; font-weight: 700; margin: ${bare ? 28 : 18}px 0 ${bare ? 12 : 8}px; line-height: 1.2; letter-spacing: -0.01em; }
+      .nx-prose h2 { font-size: ${bare ? 25 : 20}px; font-weight: 700; margin: ${bare ? 24 : 16}px 0 ${bare ? 10 : 6}px; line-height: 1.3; letter-spacing: -0.01em; }
+      .nx-prose h3 { font-size: ${bare ? 19 : 16}px; font-weight: 600; margin: ${bare ? 18 : 14}px 0 6px; }
       .nx-prose ul, .nx-prose ol { padding-left: 22px; margin: 0 0 10px; }
       .nx-prose ul { list-style: disc; } .nx-prose ol { list-style: decimal; }
       .nx-prose li { margin: 2px 0; }

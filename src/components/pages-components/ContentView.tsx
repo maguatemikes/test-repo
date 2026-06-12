@@ -98,8 +98,6 @@ function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: 
     });
   }, [id]);
 
-  const input = { width: "100%", fontSize: 13, padding: "8px 12px", border: "1px solid var(--border)", borderRadius: 6, outline: "none", color: "#0F172A", fontFamily: font, boxSizing: "border-box" as const };
-
   const save = async () => {
     if (!name.trim()) { alert("Template name is required."); return; }
     setBusy(true);
@@ -109,38 +107,42 @@ function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: 
     if (ok) onSaved(); else alert("Save failed.");
   };
 
+  const wordCount = body.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").trim().split(/\s+/).filter(Boolean).length;
+
   return (
-    <div onClick={onClose} className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(15,23,42,0.4)" }}>
-      <div onClick={(e) => e.stopPropagation()} className="rounded-xl" style={{ background: "#FFFFFF", width: 720, maxWidth: "92vw", maxHeight: "90vh", overflow: "auto", fontFamily: font }}>
-        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--border)" }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, color: "#0F172A" }}>{id != null ? "Edit template" : "New template"}</h3>
-          <button onClick={onClose} style={{ color: "#94A3B8", cursor: "pointer" }}><X size={16} /></button>
+    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "#FFFFFF", fontFamily: font }}>
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-4 md:px-6 shrink-0" style={{ height: 56, borderBottom: "1px solid var(--border)" }}>
+        <div className="flex items-center gap-3">
+          <button onClick={onClose} title="Close" className="flex items-center justify-center rounded-lg" style={{ width: 32, height: 32, color: "#64748B", background: "#F1F5F9", cursor: "pointer" }}><X size={16} /></button>
+          <div className="flex items-center gap-2 rounded-md px-2.5 py-1" style={{ background: "#F1F5F9", fontSize: 12, color: "#64748B" }}>
+            <span style={{ fontWeight: 500 }}>Draft</span>
+            <span style={{ color: "#CBD5E1" }}>|</span>
+            <span className="flex items-center gap-1.5">{busy ? "Saving…" : "Synced"}<span style={{ width: 7, height: 7, borderRadius: 999, background: busy ? "#94A3B8" : "#22C55E" }} /></span>
+          </div>
         </div>
+        <div className="flex items-center gap-3">
+          <span className="hidden md:inline" style={{ fontSize: 12, color: "#94A3B8", fontVariantNumeric: "tabular-nums" }}>{wordCount} words</span>
+          <button onClick={onClose} disabled={busy} style={{ fontSize: 13, fontWeight: 500, color: "#64748B", background: "transparent", border: "none", padding: "7px 12px", cursor: "pointer" }}>Cancel</button>
+          <button onClick={save} disabled={busy || loading} style={{ fontSize: 13, fontWeight: 500, color: "#FFFFFF", background: "#0F172A", border: "none", padding: "7px 18px", borderRadius: 8, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>{busy ? "Saving…" : id != null ? "Save" : "Create"}</button>
+        </div>
+      </div>
+
+      {/* Canvas */}
+      <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <p style={{ fontSize: 13, color: "#94A3B8", padding: 24 }}>Loading…</p>
+          <p style={{ fontSize: 13, color: "#94A3B8", padding: 40, textAlign: "center" }}>Loading…</p>
         ) : (
-          <div className="p-5 space-y-4">
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 500, color: "#0F172A", display: "block", marginBottom: 6 }}>Template name</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. June Promo" style={input} />
-            </div>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 500, color: "#0F172A", display: "block", marginBottom: 6 }}>Subject line</label>
-              <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g. Your June deals are here 🎉" style={input} />
-            </div>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 500, color: "#0F172A", display: "block", marginBottom: 6 }}>Email body</label>
-              <RichTextEditor value={body} onChange={(html, json) => { setBody(html); setDesign(json); }} placeholder="Write your email — headings, lists, images, links…" />
-              <p style={{ fontSize: 11, color: "#94A3B8", marginTop: 4 }}>Block editor — saves both the HTML (for sending) and the design JSON.</p>
-            </div>
+          <div className="mx-auto px-5" style={{ maxWidth: 680, paddingTop: 40 }}>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Untitled template"
+              style={{ width: "100%", fontSize: 12, fontWeight: 500, color: "#94A3B8", border: "none", outline: "none", background: "transparent", marginBottom: 18, fontFamily: font, letterSpacing: "0.02em", textTransform: "uppercase" }} />
+            <textarea value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Add a subject line" rows={1}
+              ref={(el) => { if (el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; } }}
+              onInput={(e) => { const t = e.currentTarget; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }}
+              style={{ width: "100%", fontSize: 36, fontWeight: 700, color: "#0F172A", border: "none", outline: "none", background: "transparent", resize: "none", lineHeight: 1.15, letterSpacing: "-0.02em", fontFamily: font, marginBottom: 14, overflow: "hidden" }} />
+            <RichTextEditor value={body} onChange={(html, json) => { setBody(html); setDesign(json); }} placeholder="Start writing your email…" bare />
           </div>
         )}
-        <div className="flex justify-end gap-2 px-5 py-4" style={{ borderTop: "1px solid var(--border)" }}>
-          <button onClick={onClose} disabled={busy} style={{ fontSize: 12, fontWeight: 500, color: "#64748B", background: "#F1F5F9", border: "none", padding: "8px 16px", borderRadius: 6, cursor: "pointer" }}>Cancel</button>
-          <button onClick={save} disabled={busy || loading} style={{ fontSize: 12, fontWeight: 500, color: "#FFFFFF", background: "#2563EB", border: "none", padding: "8px 18px", borderRadius: 6, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>
-            {busy ? "Saving…" : id != null ? "Save changes" : "Create template"}
-          </button>
-        </div>
       </div>
     </div>
   );
