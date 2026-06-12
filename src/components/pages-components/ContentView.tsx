@@ -81,7 +81,7 @@ export function ContentView() {
       )}
 
       {editing !== null && (
-        <TemplateEditor id={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />
+        <TemplateEditor id={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={(savedId) => { reload(); if (savedId != null) setEditing(savedId); }} />
       )}
 
       <ConfirmDialog
@@ -264,7 +264,7 @@ function StylePanel({ value, onChange }: { value: StyleSettings; onChange: (s: S
   );
 }
 
-function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: () => void; onSaved: () => void }) {
+function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: () => void; onSaved: (savedId?: number) => void }) {
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
@@ -311,9 +311,11 @@ function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: 
     if (!name.trim()) { alert("Template name is required."); return; }
     setBusy(true);
     const payload = { name: name.trim(), subjectDefault: subject.trim(), htmlBody: body, design: { doc: editorDoc, thumbnail, tags, style } };
-    const ok = id != null ? await updateTemplate(id, payload) : (await createTemplate(payload)).ok;
+    let ok = false; let savedId = id ?? undefined;
+    if (id != null) { ok = await updateTemplate(id, payload); }
+    else { const res = await createTemplate(payload); ok = res.ok; savedId = res.id; }
     setBusy(false);
-    if (ok) onSaved(); else alert("Save failed.");
+    if (ok) { setSavedState("synced"); onSaved(savedId); } else alert("Save failed.");
   };
 
   const wordCount = body.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").trim().split(/\s+/).filter(Boolean).length;
