@@ -62,15 +62,15 @@ export function ContentView() {
     <div className="p-6 space-y-5" style={{ fontFamily: font }}>
       <style>{`
         .nx-doc-html img { max-width:100%; height:auto; border-radius:8px; margin:10px 0; display:block; }
-        .nx-doc-html h1 { font-size:26px; font-weight:700; line-height:1.2; margin:6px 0 8px; color:#0F172A; }
-        .nx-doc-html h2 { font-size:19px; font-weight:700; margin:16px 0 6px; color:#0F172A; }
-        .nx-doc-html h3 { font-size:16px; font-weight:600; margin:12px 0 4px; color:#0F172A; }
+        .nx-doc-html h1 { font-size:28px; font-weight:700; line-height:1.15; margin:6px 0 8px; color:var(--nx-head,#0F172A); }
+        .nx-doc-html h2 { font-size:20px; font-weight:700; margin:18px 0 6px; color:var(--nx-head,#0F172A); }
+        .nx-doc-html h3 { font-size:16px; font-weight:600; margin:14px 0 4px; color:var(--nx-head,#0F172A); }
         .nx-doc-html p { margin:8px 0; }
         .nx-doc-html ul, .nx-doc-html ol { padding-left:20px; margin:8px 0; }
         .nx-doc-html li { margin:4px 0; }
-        .nx-doc-html blockquote { border-left:3px solid #E2E8F0; padding-left:12px; color:#64748B; font-style:italic; margin:10px 0; }
-        .nx-doc-html hr { border:none; border-top:1px solid #E2E8F0; margin:16px 0; }
-        .nx-doc-html a { color:#2563EB; }
+        .nx-doc-html blockquote { border-left:3px solid var(--nx-accent,#E2E8F0); padding-left:12px; color:#64748B; font-style:italic; margin:10px 0; }
+        .nx-doc-html hr { border:none; border-top:1px solid var(--nx-rule,#E2E8F0); margin:16px 0; }
+        .nx-doc-html a { color:var(--nx-accent,#2563EB); font-weight:500; }
       `}</style>
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
@@ -296,6 +296,7 @@ const QUICK_STARTS: QuickStart[] = [
   },
   {
     key: "classic-editorial", name: "Classic Editorial", subject: "Inside the City's Most Stylish Spaces", tags: ["editorial", "design"],
+    style: { fontFamily: "Georgia, 'Times New Roman', serif", textColor: "#1f1a17", accent: "#9a5b2c", background: "#fbf8f2", contentWidth: 660 },
     html: `<h1>The Nordiske — Issue 01</h1>
 <p><em>Discover minimalist homes, visionary design, and the quiet soul of Scandinavian living.</em></p>
 <img src="${img("1506905925346-21bda4d32df4")}" alt="Nordic landscape">
@@ -308,6 +309,7 @@ const QUICK_STARTS: QuickStart[] = [
   },
   {
     key: "featured-interview", name: "Featured Interview", subject: "Working Remotely While Traveling the World", tags: ["interview", "people"],
+    style: { fontFamily: "system-ui, -apple-system, sans-serif", textColor: "#1f2430", accent: "#6d28d9", background: "#ffffff", contentWidth: 660 },
     html: `<h1>Ava Sinclair on Building a Career From Anywhere</h1>
 <p><em>How a travel creator built a thriving career while exploring the world with her dog.</em></p>
 <img src="${img("1494790108377-be9c29b29330")}" alt="Ava Sinclair">
@@ -319,6 +321,7 @@ const QUICK_STARTS: QuickStart[] = [
   },
   {
     key: "tech-roundup", name: "Tech Roundup", subject: "SF Weekly Pulse: Issue 02", tags: ["tech", "news"],
+    style: { fontFamily: "system-ui, -apple-system, sans-serif", textColor: "#0f172a", accent: "#2563eb", background: "#f6f9fc", contentWidth: 680 },
     html: `<h1>SF Weekly Pulse — Issue 02</h1>
 <p><em>Another big week in San Francisco's tech ecosystem — funding, deadlines, and what's next.</em></p>
 <img src="${img("1498050108023-c5249f4df085")}" alt="Workspace">
@@ -336,6 +339,7 @@ const QUICK_STARTS: QuickStart[] = [
   },
   {
     key: "community-pulse", name: "Community Pulse", subject: "This week in Stride — new faces, tips & a coffee run", tags: ["community", "events"],
+    style: { fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif", textColor: "#1f2937", accent: "#ea6a1e", background: "#fff8f1", contentWidth: 660 },
     html: `<h1>This Week in Stride</h1>
 <p><em>Catch up on upcoming meetups, training hacks, and Kyle's 10K milestone.</em></p>
 <h2>Hey runners — here's what's happening</h2>
@@ -350,6 +354,7 @@ const QUICK_STARTS: QuickStart[] = [
   },
   {
     key: "style-edit", name: "The Style Edit", subject: "Everything in Fashion This Week", tags: ["fashion", "lifestyle"],
+    style: { fontFamily: "Georgia, 'Times New Roman', serif", textColor: "#1a1115", accent: "#d6276e", background: "#fdf2f7", contentWidth: 640 },
     html: `<h1>The Style Edit</h1>
 <p><em>From effortless streetwear to red-carpet moments — here's what we're obsessed with.</em></p>
 <img src="${img("1483985988355-763728e1935b")}" alt="Fashion rack">
@@ -363,6 +368,7 @@ const QUICK_STARTS: QuickStart[] = [
   },
   {
     key: "wellness-reset", name: "Health & Wellness", subject: "Spring Cleaning for Your Health", tags: ["health", "wellness"],
+    style: { fontFamily: "system-ui, -apple-system, sans-serif", textColor: "#133a2e", accent: "#0f9d6e", background: "#edfbf4", contentWidth: 660 },
     html: `<h1>Spring Cleaning for Your Health</h1>
 <p><em>Small resets that make a big difference this season.</em></p>
 <img src="${img("1476480862126-209bfaa8edc8")}" alt="Forest trail">
@@ -379,13 +385,19 @@ const QUICK_STARTS: QuickStart[] = [
 /** Premade newsletter card — clicking seeds the editor with this content. */
 function QuickStartCard({ qs, onUse }: { qs: QuickStart; onUse: () => void }) {
   const [menu, setMenu] = useState(false);
+  const st = qs.style ?? {};
+  const previewStyle = {
+    position: "absolute", top: 0, left: 0, width: "200%", transform: "scale(0.5)", transformOrigin: "top left",
+    padding: "26px 28px", pointerEvents: "none", fontSize: 14, lineHeight: 1.6,
+    color: st.textColor ?? "#334155", fontFamily: st.fontFamily,
+    ["--nx-head"]: st.textColor ?? "#0F172A", ["--nx-accent"]: st.accent ?? "#2563EB", ["--nx-rule"]: st.accent ? `${st.accent}33` : "#E2E8F0",
+  } as React.CSSProperties;
   return (
     <div className="rounded-xl flex flex-col" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
       <button onClick={onUse} className="block text-left relative"
-        style={{ height: 300, width: "100%", overflow: "hidden", background: "#FFFFFF", borderBottom: "1px solid var(--border)", borderTopLeftRadius: 12, borderTopRightRadius: 12, cursor: "pointer", padding: 0 }}>
+        style={{ height: 300, width: "100%", overflow: "hidden", background: st.background ?? "#FFFFFF", borderBottom: "1px solid var(--border)", borderTopLeftRadius: 12, borderTopRightRadius: 12, cursor: "pointer", padding: 0 }}>
         <div style={{ position: "absolute", inset: 0 }}>
-          <div className="nx-doc-html" style={{ position: "absolute", top: 0, left: 0, width: "200%", transform: "scale(0.5)", transformOrigin: "top left", padding: "26px 28px", pointerEvents: "none", fontSize: 14, lineHeight: 1.6, color: "#334155" }}
-            dangerouslySetInnerHTML={{ __html: qs.html }} />
+          <div className="nx-doc-html" style={previewStyle} dangerouslySetInnerHTML={{ __html: qs.html }} />
         </div>
       </button>
       <div className="flex items-center justify-between gap-2" style={{ padding: "12px 14px" }}>
