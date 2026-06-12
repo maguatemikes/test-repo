@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutTemplate, FileText, Plus, Pencil, Trash2, Copy, X, ArrowRight } from "lucide-react";
+import { LayoutTemplate, FileText, Plus, Pencil, Trash2, Copy, X, ArrowRight, Image as ImageIcon, Tag } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -82,6 +82,9 @@ export function ContentView() {
   );
 }
 
+type StyleSettings = { fontFamily: string; textColor: string; accent: string; background: string; contentWidth: number };
+const DEFAULT_STYLE: StyleSettings = { fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif", textColor: "#1A2231", accent: "#2563EB", background: "#FFFFFF", contentWidth: 680 };
+
 /** Beehiiv-style email-size gauge (warns near Gmail's ~102KB clip limit). */
 function SizeGauge({ pct, kb }: { pct: number; kb: number }) {
   const offset = 126 - (126 * Math.min(pct, 100)) / 100;
@@ -97,20 +100,74 @@ function SizeGauge({ pct, kb }: { pct: number; kb: number }) {
   );
 }
 
+/** Style tab — global look (font, colors, width) applied to the template. */
+function StylePanel({ value, onChange }: { value: StyleSettings; onChange: (s: StyleSettings) => void }) {
+  const set = (patch: Partial<StyleSettings>) => onChange({ ...value, ...patch });
+  const fonts = [
+    { label: "Helvetica (sans)", val: "Helvetica Neue, Helvetica, Arial, sans-serif" },
+    { label: "Georgia (serif)", val: "Georgia, 'Times New Roman', serif" },
+    { label: "System", val: "system-ui, -apple-system, sans-serif" },
+    { label: "Monospace", val: "'JetBrains Mono', monospace" },
+  ];
+  const colorInput = (v: string, on: (c: string) => void) => (
+    <input type="color" value={v} onChange={(e) => on(e.target.value)} style={{ width: 36, height: 26, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer", padding: 0 }} />
+  );
+  const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div className="flex items-center justify-between py-3" style={{ borderBottom: "1px solid #F1F5F9" }}>
+      <span style={{ fontSize: 13, color: "#374151" }}>{label}</span>{children}
+    </div>
+  );
+  return (
+    <div className="mx-auto px-5" style={{ maxWidth: 480, paddingTop: 40, fontFamily: font }}>
+      <h2 style={{ fontSize: 16, fontWeight: 600, color: "#0F172A" }}>Style</h2>
+      <p style={{ fontSize: 12.5, color: "#64748B", margin: "2px 0 16px" }}>Global look for this template.</p>
+      <div className="rounded-xl px-4" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
+        <Row label="Font">
+          <select value={value.fontFamily} onChange={(e) => set({ fontFamily: e.target.value })} style={{ fontSize: 13, padding: "5px 8px", border: "1px solid var(--border)", borderRadius: 6, background: "#fff", color: "#0F172A" }}>
+            {fonts.map((f) => <option key={f.val} value={f.val}>{f.label}</option>)}
+          </select>
+        </Row>
+        <Row label="Text color">{colorInput(value.textColor, (c) => set({ textColor: c }))}</Row>
+        <Row label="Accent / links">{colorInput(value.accent, (c) => set({ accent: c }))}</Row>
+        <Row label="Background">{colorInput(value.background, (c) => set({ background: c }))}</Row>
+        <Row label={`Content width — ${value.contentWidth}px`}>
+          <input type="range" min={480} max={820} step={20} value={value.contentWidth} onChange={(e) => set({ contentWidth: Number(e.target.value) })} style={{ width: 150 }} />
+        </Row>
+      </div>
+      <div className="rounded-xl p-5 mt-4" style={{ background: value.background, border: "1px solid var(--border)", fontFamily: value.fontFamily, color: value.textColor }}>
+        <p style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8", marginBottom: 8, letterSpacing: "0.05em" }}>PREVIEW</p>
+        <h3 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 6px", letterSpacing: "-0.01em" }}>Your subject headline</h3>
+        <p style={{ fontSize: 14.5, lineHeight: 1.65, margin: 0 }}>This is how your email body reads. <span style={{ color: value.accent, textDecoration: "underline" }}>Links use the accent color.</span></p>
+      </div>
+    </div>
+  );
+}
+
 function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
-  const [design, setDesign] = useState<unknown>(null);
+  const [editorDoc, setEditorDoc] = useState<unknown>(null);
+  const [thumbnail, setThumbnail] = useState<string>("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [style, setStyle] = useState<StyleSettings>(DEFAULT_STYLE);
+  const [tab, setTab] = useState<"write" | "style">("write");
+  const [tagInput, setTagInput] = useState("");
   const [loading, setLoading] = useState(!!id);
   const [busy, setBusy] = useState(false);
   const [savedState, setSavedState] = useState<"synced" | "saving" | "unsaved">("synced");
   const skipFirstEdit = useRef(true);
+  const thumbRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (id == null) return;
     getTemplate(id).then((t) => {
-      if (t) { setName(t.name); setSubject(t.subjectDefault || ""); setBody(t.htmlBody || ""); setDesign(t.design ?? null); }
+      if (t) {
+        setName(t.name); setSubject(t.subjectDefault || ""); setBody(t.htmlBody || "");
+        const d = (t.design || {}) as Record<string, unknown>;
+        setEditorDoc(d.doc ?? null); setThumbnail((d.thumbnail as string) || ""); setTags((d.tags as string[]) || []);
+        setStyle({ ...DEFAULT_STYLE, ...((d.style as Partial<StyleSettings>) || {}) });
+      }
       setLoading(false);
     });
   }, [id]);
@@ -123,16 +180,16 @@ function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: 
     setSavedState("unsaved");
     const t = setTimeout(async () => {
       setSavedState("saving");
-      const ok = await updateTemplate(id, { name: name.trim() || "Untitled template", subjectDefault: subject.trim(), htmlBody: body, design });
+      const ok = await updateTemplate(id, { name: name.trim() || "Untitled template", subjectDefault: subject.trim(), htmlBody: body, design: { doc: editorDoc, thumbnail, tags, style } });
       setSavedState(ok ? "synced" : "unsaved");
     }, 1200);
     return () => clearTimeout(t);
-  }, [name, subject, body, design, id, loading]);
+  }, [name, subject, body, editorDoc, thumbnail, tags, style, id, loading]);
 
   const save = async () => {
     if (!name.trim()) { alert("Template name is required."); return; }
     setBusy(true);
-    const payload = { name: name.trim(), subjectDefault: subject.trim(), htmlBody: body, design };
+    const payload = { name: name.trim(), subjectDefault: subject.trim(), htmlBody: body, design: { doc: editorDoc, thumbnail, tags, style } };
     const ok = id != null ? await updateTemplate(id, payload) : (await createTemplate(payload)).ok;
     setBusy(false);
     if (ok) onSaved(); else alert("Save failed.");
@@ -144,6 +201,13 @@ function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: 
   const sync = busy ? "saving" : savedState;
   const syncLabel = sync === "saving" ? "Saving…" : sync === "unsaved" ? "Unsaved" : "Synced";
   const syncColor = sync === "saving" ? "#94A3B8" : sync === "unsaved" ? "#D97706" : "#22C55E";
+
+  const onPickThumb = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) { const r = new FileReader(); r.onload = () => setThumbnail(r.result as string); r.readAsDataURL(f); }
+    e.target.value = "";
+  };
+  const addTag = () => { const t = tagInput.trim(); if (t && !tags.includes(t)) setTags([...tags, t]); setTagInput(""); };
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "#FFFFFF", fontFamily: font }}>
@@ -157,6 +221,11 @@ function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: 
             <span className="flex items-center gap-1.5" style={{ color: syncColor }}>{syncLabel}<span style={{ width: 7, height: 7, borderRadius: 999, background: syncColor }} /></span>
           </div>
         </div>
+        <div className="hidden md:flex gap-1 p-1 rounded-lg" style={{ background: "#F1F5F9" }}>
+          {(["write", "style"] as const).map((tk) => (
+            <button key={tk} onClick={() => setTab(tk)} style={{ fontSize: 12, fontWeight: 500, padding: "5px 18px", borderRadius: 6, textTransform: "capitalize", background: tab === tk ? "#FFFFFF" : "transparent", color: tab === tk ? "#0F172A" : "#64748B", border: tab === tk ? "1px solid var(--border)" : "1px solid transparent", cursor: "pointer", fontFamily: font }}>{tk}</button>
+          ))}
+        </div>
         <div className="flex items-center gap-3">
           <SizeGauge pct={sizePct} kb={sizeBytes / 1024} />
           <span className="hidden md:inline" style={{ fontSize: 12, color: "#94A3B8", fontVariantNumeric: "tabular-nums" }}>{wordCount} words</span>
@@ -166,18 +235,42 @@ function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: 
       </div>
 
       {/* Canvas */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" style={{ background: tab === "write" ? style.background : "#F8FAFC" }}>
         {loading ? (
           <p style={{ fontSize: 13, color: "#94A3B8", padding: 40, textAlign: "center" }}>Loading…</p>
+        ) : tab === "style" ? (
+          <StylePanel value={style} onChange={setStyle} />
         ) : (
-          <div className="mx-auto px-5" style={{ maxWidth: 680, paddingTop: 40 }}>
+          <div className="mx-auto px-5" style={{ maxWidth: style.contentWidth, paddingTop: 32, color: style.textColor, fontFamily: style.fontFamily }}>
+            <div className="flex items-center gap-4 mb-4 flex-wrap">
+              {!thumbnail && (
+                <button onClick={() => thumbRef.current?.click()} className="flex items-center gap-1.5" style={{ fontSize: 13, color: "#94A3B8", background: "transparent", border: "none", cursor: "pointer", fontFamily: font }}><ImageIcon size={14} /> Add thumbnail</button>
+              )}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Tag size={13} color="#94A3B8" />
+                {tags.map((tg) => (
+                  <span key={tg} className="flex items-center gap-1 rounded-full px-2.5 py-0.5" style={{ fontSize: 11, fontWeight: 500, background: `${style.accent}1A`, color: style.accent }}>{tg}<button onClick={() => setTags(tags.filter((x) => x !== tg))} style={{ cursor: "pointer", color: "inherit", display: "flex" }}><X size={10} /></button></span>
+                ))}
+                <input value={tagInput} onChange={(e) => setTagInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }} placeholder={tags.length ? "add tag" : "Add content tags"}
+                  style={{ fontSize: 13, border: "none", outline: "none", background: "transparent", color: "#94A3B8", width: 130, fontFamily: font }} />
+              </div>
+              <input ref={thumbRef} type="file" accept="image/*" hidden onChange={onPickThumb} />
+            </div>
+
+            {thumbnail && (
+              <div className="relative mb-5">
+                <img src={thumbnail} alt="" style={{ width: "100%", borderRadius: 12, maxHeight: 300, objectFit: "cover", display: "block" }} />
+                <button onClick={() => setThumbnail("")} title="Remove thumbnail" className="absolute flex items-center justify-center rounded-full" style={{ top: 10, right: 10, width: 26, height: 26, background: "rgba(15,23,42,0.6)", color: "#fff", cursor: "pointer", border: "none" }}><X size={14} /></button>
+              </div>
+            )}
+
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Untitled template"
-              style={{ width: "100%", fontSize: 12, fontWeight: 500, color: "#94A3B8", border: "none", outline: "none", background: "transparent", marginBottom: 18, fontFamily: font, letterSpacing: "0.02em", textTransform: "uppercase" }} />
+              style={{ width: "100%", fontSize: 11, fontWeight: 600, color: "#94A3B8", border: "none", outline: "none", background: "transparent", marginBottom: 14, fontFamily: font, letterSpacing: "0.05em", textTransform: "uppercase" }} />
             <textarea value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Add a subject line" rows={1}
               ref={(el) => { if (el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; } }}
               onInput={(e) => { const t = e.currentTarget; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }}
-              style={{ width: "100%", fontSize: 36, fontWeight: 700, color: "#0F172A", border: "none", outline: "none", background: "transparent", resize: "none", lineHeight: 1.15, letterSpacing: "-0.02em", fontFamily: font, marginBottom: 14, overflow: "hidden" }} />
-            <RichTextEditor value={body} onChange={(html, json) => { setBody(html); setDesign(json); }} placeholder="Start writing your email…" bare />
+              style={{ width: "100%", fontSize: 36, fontWeight: 700, color: style.textColor, border: "none", outline: "none", background: "transparent", resize: "none", lineHeight: 1.15, letterSpacing: "-0.02em", fontFamily: style.fontFamily, marginBottom: 14, overflow: "hidden" }} />
+            <RichTextEditor value={body} onChange={(html, json) => { setBody(html); setEditorDoc(json); }} placeholder="Start writing your email…" bare />
           </div>
         )}
       </div>
