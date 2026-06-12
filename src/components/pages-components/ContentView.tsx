@@ -100,39 +100,51 @@ function SizeGauge({ pct, kb }: { pct: number; kb: number }) {
   );
 }
 
-/** Style tab — global look (font, colors, width) applied to the template. */
-function StylePanel({ value, onChange }: { value: StyleSettings; onChange: (s: StyleSettings) => void }) {
-  const set = (patch: Partial<StyleSettings>) => onChange({ ...value, ...patch });
-  const fonts = [
-    { label: "Helvetica (sans)", val: "Helvetica Neue, Helvetica, Arial, sans-serif" },
-    { label: "Georgia (serif)", val: "Georgia, 'Times New Roman', serif" },
-    { label: "System", val: "system-ui, -apple-system, sans-serif" },
-    { label: "Monospace", val: "'JetBrains Mono', monospace" },
-  ];
-  const colorInput = (v: string, on: (c: string) => void) => (
-    <input type="color" value={v} onChange={(e) => on(e.target.value)} style={{ width: 36, height: 26, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer", padding: 0 }} />
-  );
-  const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
+const STYLE_FONTS = [
+  { label: "Helvetica (sans)", val: "Helvetica Neue, Helvetica, Arial, sans-serif" },
+  { label: "Georgia (serif)", val: "Georgia, 'Times New Roman', serif" },
+  { label: "System", val: "system-ui, -apple-system, sans-serif" },
+  { label: "Monospace", val: "'JetBrains Mono', monospace" },
+];
+
+// Hoisted to module scope: a stable component identity so editing a control
+// (e.g. dragging the color picker) does NOT remount the row and close it.
+function StyleRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
     <div className="flex items-center justify-between py-3" style={{ borderBottom: "1px solid #F1F5F9" }}>
       <span style={{ fontSize: 13, color: "#374151" }}>{label}</span>{children}
     </div>
   );
+}
+
+function ColorField({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+  return (
+    <span className="flex items-center gap-2">
+      <span style={{ fontSize: 12, color: "#94A3B8", fontVariantNumeric: "tabular-nums", textTransform: "uppercase" }}>{value}</span>
+      <input type="color" value={value} onChange={(e) => onChange(e.target.value)} style={{ width: 36, height: 26, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer", padding: 0 }} />
+    </span>
+  );
+}
+
+/** Style tab — global look (font, colors, width) applied to the template. */
+function StylePanel({ value, onChange }: { value: StyleSettings; onChange: (s: StyleSettings) => void }) {
+  const set = (patch: Partial<StyleSettings>) => onChange({ ...value, ...patch });
   return (
     <div className="mx-auto px-5" style={{ maxWidth: 480, paddingTop: 40, fontFamily: font }}>
       <h2 style={{ fontSize: 16, fontWeight: 600, color: "#0F172A" }}>Style</h2>
       <p style={{ fontSize: 12.5, color: "#64748B", margin: "2px 0 16px" }}>Global look for this template.</p>
       <div className="rounded-xl px-4" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
-        <Row label="Font">
+        <StyleRow label="Font">
           <select value={value.fontFamily} onChange={(e) => set({ fontFamily: e.target.value })} style={{ fontSize: 13, padding: "5px 8px", border: "1px solid var(--border)", borderRadius: 6, background: "#fff", color: "#0F172A" }}>
-            {fonts.map((f) => <option key={f.val} value={f.val}>{f.label}</option>)}
+            {STYLE_FONTS.map((f) => <option key={f.val} value={f.val}>{f.label}</option>)}
           </select>
-        </Row>
-        <Row label="Text color">{colorInput(value.textColor, (c) => set({ textColor: c }))}</Row>
-        <Row label="Accent / links">{colorInput(value.accent, (c) => set({ accent: c }))}</Row>
-        <Row label="Background">{colorInput(value.background, (c) => set({ background: c }))}</Row>
-        <Row label={`Content width — ${value.contentWidth}px`}>
+        </StyleRow>
+        <StyleRow label="Text color"><ColorField value={value.textColor} onChange={(c) => set({ textColor: c })} /></StyleRow>
+        <StyleRow label="Accent / links"><ColorField value={value.accent} onChange={(c) => set({ accent: c })} /></StyleRow>
+        <StyleRow label="Background"><ColorField value={value.background} onChange={(c) => set({ background: c })} /></StyleRow>
+        <StyleRow label={`Content width — ${value.contentWidth}px`}>
           <input type="range" min={480} max={820} step={20} value={value.contentWidth} onChange={(e) => set({ contentWidth: Number(e.target.value) })} style={{ width: 150 }} />
-        </Row>
+        </StyleRow>
       </div>
       <div className="rounded-xl p-5 mt-4" style={{ background: value.background, border: "1px solid var(--border)", fontFamily: value.fontFamily, color: value.textColor }}>
         <p style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8", marginBottom: 8, letterSpacing: "0.05em" }}>PREVIEW</p>
