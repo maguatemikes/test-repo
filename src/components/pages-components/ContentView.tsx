@@ -83,7 +83,7 @@ export function ContentView() {
 }
 
 type StyleSettings = { fontFamily: string; textColor: string; accent: string; background: string; contentWidth: number };
-const DEFAULT_STYLE: StyleSettings = { fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif", textColor: "#1A2231", accent: "#2563EB", background: "#FFFFFF", contentWidth: 680 };
+const DEFAULT_STYLE: StyleSettings = { fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif", textColor: "#1a2231", accent: "#2563eb", background: "#ffffff", contentWidth: 680 };
 
 /** Beehiiv-style email-size gauge (warns near Gmail's ~102KB clip limit). */
 function SizeGauge({ pct, kb }: { pct: number; kb: number }) {
@@ -118,10 +118,15 @@ function StyleRow({ label, children }: { label: string; children: React.ReactNod
 }
 
 function ColorField({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+  // <input type=color> only accepts a lowercase #rrggbb. Keep the controlled
+  // value lowercase so it always matches the browser-normalized DOM value --
+  // a case mismatch makes React re-commit every render and, under the stream
+  // of input events the native picker emits, loops to "max update depth".
+  const v = /^#[0-9a-fA-F]{6}$/.test(value) ? value.toLowerCase() : "#000000";
   return (
     <span className="flex items-center gap-2">
-      <span style={{ fontSize: 12, color: "#94A3B8", fontVariantNumeric: "tabular-nums", textTransform: "uppercase" }}>{value}</span>
-      <input type="color" value={value} onChange={(e) => onChange(e.target.value)} style={{ width: 36, height: 26, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer", padding: 0 }} />
+      <span style={{ fontSize: 12, color: "#94A3B8", fontVariantNumeric: "tabular-nums", textTransform: "uppercase" }}>{v}</span>
+      <input type="color" value={v} onChange={(e) => onChange(e.target.value)} style={{ width: 36, height: 26, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer", padding: 0 }} />
     </span>
   );
 }
