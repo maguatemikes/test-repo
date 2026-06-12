@@ -112,13 +112,14 @@ function MenuItem({ icon: Icon, label, onClick, danger }: { icon: typeof Pencil;
 /** Beehiiv-style template card: tall content preview + name/menu footer. */
 function TemplateCard({ t, detail, onOpen, onDuplicate, onDelete }: { t: Template; detail?: Template; onOpen: () => void; onDuplicate: () => void; onDelete: () => void }) {
   const [menu, setMenu] = useState(false);
+  const [openUp, setOpenUp] = useState(false);
   const design = (detail?.design || {}) as Record<string, unknown>;
   const thumb = typeof design.thumbnail === "string" ? design.thumbnail : "";
   const html = detail?.htmlBody || "";
   return (
-    <div className="rounded-xl flex flex-col" style={{ background: "#FFFFFF", border: "1px solid var(--border)", overflow: "hidden" }}>
+    <div className="rounded-xl flex flex-col" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
       <button onClick={onOpen} className="block text-left relative"
-        style={{ height: 300, width: "100%", overflow: "hidden", background: "#FFFFFF", borderBottom: "1px solid var(--border)", cursor: "pointer", padding: 0 }}>
+        style={{ height: 300, width: "100%", overflow: "hidden", background: "#FFFFFF", borderBottom: "1px solid var(--border)", borderTopLeftRadius: 12, borderTopRightRadius: 12, cursor: "pointer", padding: 0 }}>
         {thumb ? (
           <img src={thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         ) : (
@@ -144,14 +145,14 @@ function TemplateCard({ t, detail, onOpen, onDuplicate, onDelete }: { t: Templat
           <p className="truncate" style={{ fontSize: 11.5, color: "#94A3B8", marginTop: 2 }}>{t.category ? `${cap(t.category)} · ` : ""}Updated {fmtDate(t.updatedAt)}</p>
         </div>
         <div className="relative" style={{ flexShrink: 0 }}>
-          <button onClick={() => setMenu((v) => !v)} title="More" className="flex items-center justify-center rounded-lg"
+          <button onClick={(e) => { if (!menu) setOpenUp(window.innerHeight - e.currentTarget.getBoundingClientRect().bottom < 160); setMenu((v) => !v); }} title="More" className="flex items-center justify-center rounded-lg"
             style={{ width: 30, height: 30, color: "#64748B", background: menu ? "#F1F5F9" : "transparent", border: `1px solid ${menu ? "var(--border)" : "transparent"}`, cursor: "pointer" }}>
             <MoreVertical size={16} />
           </button>
           {menu && (
             <>
               <div className="fixed inset-0" style={{ zIndex: 40 }} onClick={() => setMenu(false)} />
-              <div className="absolute rounded-lg" style={{ right: 0, top: 36, zIndex: 50, width: 158, background: "#FFFFFF", border: "1px solid var(--border)", boxShadow: "0 8px 28px rgba(15,23,42,0.14)", padding: 4 }}>
+              <div className="absolute rounded-lg" style={{ right: 0, [openUp ? "bottom" : "top"]: 36, zIndex: 50, width: 158, background: "#FFFFFF", border: "1px solid var(--border)", boxShadow: "0 8px 28px rgba(15,23,42,0.14)", padding: 4 }}>
                 <MenuItem icon={Pencil} label="Edit" onClick={() => { setMenu(false); onOpen(); }} />
                 <MenuItem icon={Copy} label="Duplicate" onClick={() => { setMenu(false); onDuplicate(); }} />
                 <MenuItem icon={Trash2} label="Archive" danger onClick={() => { setMenu(false); onDelete(); }} />
