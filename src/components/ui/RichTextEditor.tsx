@@ -4,8 +4,8 @@ import { useRef } from "react";
 import { useEditor, EditorContent, BubbleMenu, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
-import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
+import { ImageWithDelete } from "@/components/ui/imageNode";
 import { SlashCommands } from "@/components/ui/slashCommands";
 import GlobalDragHandle from "tiptap-extension-global-drag-handle";
 import AutoJoiner from "tiptap-extension-auto-joiner";
@@ -26,7 +26,7 @@ export function RichTextEditor({ value, onChange, placeholder = "Write your emai
     extensions: [
       StarterKit,
       Link.configure({ openOnClick: false, HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" } }),
-      Image.configure({ inline: false, allowBase64: true }),
+      ImageWithDelete,
       Placeholder.configure({ placeholder }),
       SlashCommands,
       GlobalDragHandle.configure({ dragHandleWidth: 24, scrollTreshold: 100 }),
@@ -175,6 +175,11 @@ function ProseStyles({ bare = false }: { bare?: boolean }) {
       .drag-handle:hover { background-color: #F1F5F9; }
       .drag-handle:active { cursor: grabbing; }
       .drag-handle.hide { opacity: 0; pointer-events: none; }
+      .nx-img-wrap { position: relative; display: block; margin: 10px 0; width: fit-content; max-width: 100%; }
+      .nx-img { max-width: 100%; border-radius: 8px; display: block; }
+      .nx-img-wrap[data-selected="true"] .nx-img { outline: 2px solid #2563EB; outline-offset: 2px; }
+      .nx-img-del { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border-radius: 999px; background: rgba(15,23,42,0.65); color: #fff; border: none; display: none; align-items: center; justify-content: center; cursor: pointer; }
+      .nx-img-wrap:hover .nx-img-del { display: flex; }
     `}</style>
   );
 }
