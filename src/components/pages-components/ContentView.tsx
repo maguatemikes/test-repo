@@ -1,7 +1,7 @@
 "use client";
 
 import { LayoutTemplate, FileText, Plus, Pencil, Trash2, Copy, X, ArrowRight } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
@@ -82,6 +82,21 @@ export function ContentView() {
   );
 }
 
+/** Beehiiv-style email-size gauge (warns near Gmail's ~102KB clip limit). */
+function SizeGauge({ pct, kb }: { pct: number; kb: number }) {
+  const offset = 126 - (126 * Math.min(pct, 100)) / 100;
+  const color = pct > 90 ? "#DC2626" : pct > 60 ? "#D97706" : "#9CA3AF";
+  return (
+    <div className="hidden md:flex items-center gap-1.5" title={`Email size ~${kb.toFixed(0)}KB${pct >= 100 ? " — may be clipped by Gmail (102KB)" : ""}`}>
+      <svg viewBox="-8 0 116 56" style={{ width: 26, height: 14 }} aria-hidden="true">
+        <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="#E5E7EB" strokeWidth="10" strokeLinecap="round" />
+        <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke={color} strokeWidth="10" strokeLinecap="round" strokeDasharray="126" strokeDashoffset={offset} />
+      </svg>
+      <span style={{ fontSize: 11, color, fontVariantNumeric: "tabular-nums" }}>{kb.toFixed(0)}KB</span>
+    </div>
+  );
+}
+
 function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
@@ -89,6 +104,8 @@ function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: 
   const [design, setDesign] = useState<unknown>(null);
   const [loading, setLoading] = useState(!!id);
   const [busy, setBusy] = useState(false);
+  const [savedState, setSavedState] = useState<"synced" | "saving" | "unsaved">("synced");
+  const skipFirstEdit = useRef(true);
 
   useEffect(() => {
     if (id == null) return;
@@ -97,6 +114,20 @@ function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: 
       setLoading(false);
     });
   }, [id]);
+
+  // Autosave (existing templates) — debounced PATCH after edits stop.
+  useEffect(() => {
+    if (loading) return;
+    if (skipFirstEdit.current) { skipFirstEdit.current = false; return; }
+    if (id == null) { setSavedState("unsaved"); return; } // new template saves on Create
+    setSavedState("unsaved");
+    const t = setTimeout(async () => {
+      setSavedState("saving");
+      const ok = await updateTemplate(id, { name: name.trim() || "Untitled template", subjectDefault: subject.trim(), htmlBody: body, design });
+      setSavedState(ok ? "synced" : "unsaved");
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [name, subject, body, design, id, loading]);
 
   const save = async () => {
     if (!name.trim()) { alert("Template name is required."); return; }
@@ -108,6 +139,11 @@ function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: 
   };
 
   const wordCount = body.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").trim().split(/\s+/).filter(Boolean).length;
+  const sizeBytes = typeof window !== "undefined" ? new Blob([body]).size : body.length;
+  const sizePct = Math.min(100, (sizeBytes / 102400) * 100); // Gmail clips ~102KB
+  const sync = busy ? "saving" : savedState;
+  const syncLabel = sync === "saving" ? "Saving…" : sync === "unsaved" ? "Unsaved" : "Synced";
+  const syncColor = sync === "saving" ? "#94A3B8" : sync === "unsaved" ? "#D97706" : "#22C55E";
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "#FFFFFF", fontFamily: font }}>
@@ -118,10 +154,11 @@ function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: 
           <div className="flex items-center gap-2 rounded-md px-2.5 py-1" style={{ background: "#F1F5F9", fontSize: 12, color: "#64748B" }}>
             <span style={{ fontWeight: 500 }}>Draft</span>
             <span style={{ color: "#CBD5E1" }}>|</span>
-            <span className="flex items-center gap-1.5">{busy ? "Saving…" : "Synced"}<span style={{ width: 7, height: 7, borderRadius: 999, background: busy ? "#94A3B8" : "#22C55E" }} /></span>
+            <span className="flex items-center gap-1.5" style={{ color: syncColor }}>{syncLabel}<span style={{ width: 7, height: 7, borderRadius: 999, background: syncColor }} /></span>
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <SizeGauge pct={sizePct} kb={sizeBytes / 1024} />
           <span className="hidden md:inline" style={{ fontSize: 12, color: "#94A3B8", fontVariantNumeric: "tabular-nums" }}>{wordCount} words</span>
           <button onClick={onClose} disabled={busy} style={{ fontSize: 13, fontWeight: 500, color: "#64748B", background: "transparent", border: "none", padding: "7px 12px", cursor: "pointer" }}>Cancel</button>
           <button onClick={save} disabled={busy || loading} style={{ fontSize: 13, fontWeight: 500, color: "#FFFFFF", background: "#0F172A", border: "none", padding: "7px 18px", borderRadius: 8, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>{busy ? "Saving…" : id != null ? "Save" : "Create"}</button>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { useEditor, EditorContent, BubbleMenu, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
@@ -27,7 +28,34 @@ export function RichTextEditor({ value, onChange, placeholder = "Write your emai
     ],
     content: value || "",
     onUpdate: ({ editor }) => onChange?.(editor.getHTML(), editor.getJSON()),
-    editorProps: { attributes: { class: "nx-prose" } },
+    editorProps: {
+      attributes: { class: "nx-prose" },
+      handleDrop(view, event) {
+        const img = event.dataTransfer?.files && Array.from(event.dataTransfer.files).find((f) => f.type.startsWith("image/"));
+        if (!img) return false;
+        event.preventDefault();
+        const reader = new FileReader();
+        reader.onload = () => {
+          const node = view.state.schema.nodes.image.create({ src: reader.result });
+          const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ?? view.state.selection.from;
+          view.dispatch(view.state.tr.insert(pos, node));
+        };
+        reader.readAsDataURL(img);
+        return true;
+      },
+      handlePaste(view, event) {
+        const img = event.clipboardData?.files && Array.from(event.clipboardData.files).find((f) => f.type.startsWith("image/"));
+        if (!img) return false;
+        event.preventDefault();
+        const reader = new FileReader();
+        reader.onload = () => {
+          const node = view.state.schema.nodes.image.create({ src: reader.result });
+          view.dispatch(view.state.tr.replaceSelectionWith(node));
+        };
+        reader.readAsDataURL(img);
+        return true;
+      },
+    },
   });
 
   if (!editor) return <div style={{ height: 300, background: bare ? "transparent" : "#F8FAFC", borderRadius: 8 }} />;
@@ -84,9 +112,11 @@ function Toolbar({ editor, bare = false }: { editor: Editor; bare?: boolean }) {
     if (url === "") { editor.chain().focus().unsetLink().run(); return; }
     editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
   };
-  const addImage = () => {
-    const url = window.prompt("Image URL");
-    if (url) editor.chain().focus().setImage({ src: url }).run();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const onPickImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) { const reader = new FileReader(); reader.onload = () => editor.chain().focus().setImage({ src: reader.result as string }).run(); reader.readAsDataURL(file); }
+    e.target.value = "";
   };
   return (
     <div className="flex items-center flex-wrap gap-0.5 px-2 py-1.5" style={{ border: "1px solid var(--border)", background: "#FFFFFF", position: "sticky", top: 0, zIndex: 2, borderRadius: bare ? 10 : 0, borderLeftWidth: bare ? 1 : 0, borderRightWidth: bare ? 1 : 0, borderTopWidth: bare ? 1 : 0, marginBottom: bare ? 4 : 0, boxShadow: bare ? "0 1px 4px rgba(15,23,42,0.06)" : "none" }}>
@@ -104,7 +134,8 @@ function Toolbar({ editor, bare = false }: { editor: Editor; bare?: boolean }) {
       <Btn title="Divider" on={() => editor.chain().focus().setHorizontalRule().run()}><Minus size={15} /></Btn>
       {sep}
       <Btn title="Link" active={editor.isActive("link")} on={addLink}><Link2 size={14} /></Btn>
-      <Btn title="Image" on={addImage}><ImageIcon size={14} /></Btn>
+      <Btn title="Upload image" on={() => fileRef.current?.click()}><ImageIcon size={14} /></Btn>
+      <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPickImage} />
       <div className="flex-1" />
       <Btn title="Undo" disabled={!editor.can().undo()} on={() => editor.chain().focus().undo().run()}><Undo2 size={14} /></Btn>
       <Btn title="Redo" disabled={!editor.can().redo()} on={() => editor.chain().focus().redo().run()}><Redo2 size={14} /></Btn>
