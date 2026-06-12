@@ -1,9 +1,8 @@
 "use client";
 
-import { LayoutTemplate, FileText, Plus, Pencil, Trash2, Copy, X, ArrowRight, Image as ImageIcon, Tag } from "lucide-react";
+import { FileText, Plus, Pencil, Trash2, Copy, X, ArrowRight, Image as ImageIcon, Tag, MoreVertical } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { listTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate, duplicateTemplate, type Template } from "@/lib/templates";
 
@@ -12,11 +11,24 @@ const fmtDate = (d?: string | null) => { if (!d) return "—"; const x = new Dat
 
 export function ContentView() {
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [details, setDetails] = useState<Record<number, Template>>({});
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<number | "new" | null>(null);
 
   const reload = useCallback(async () => { setLoading(true); setTemplates(await listTemplates()); setLoading(false); }, []);
   useEffect(() => { reload(); }, [reload]);
+
+  // List rows omit htmlBody/design, so lazily pull each full record to upgrade
+  // the card preview to its real thumbnail/body. Cards render immediately with
+  // a stylized fallback; previews fill in as these resolve.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(templates.map(async (t) => [t.id, await getTemplate(t.id)] as const));
+      if (!cancelled) setDetails(Object.fromEntries(entries.filter(([, v]) => v) as [number, Template][]));
+    })();
+    return () => { cancelled = true; };
+  }, [templates]);
 
   const onDelete = async (id: number) => {
     if (!confirm("Archive this template?")) return;
@@ -46,31 +58,17 @@ export function ContentView() {
       </div>
 
       {loading ? (
-        <p style={{ fontSize: 13, color: "#94A3B8" }}>Loading templates…</p>
-      ) : templates.length === 0 ? (
-        <EmptyState icon={LayoutTemplate} title="No templates yet" description="Create a reusable email template, then pick it from any campaign."
-          action={<button onClick={() => setEditing("new")} className="rounded-lg px-4 py-2" style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF", cursor: "pointer" }}>Create your first template</button>} />
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="rounded-xl" style={{ height: 360, background: "#FFFFFF", border: "1px solid var(--border)", opacity: 0.6 }} />
+          ))}
+        </div>
       ) : (
-        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <BlankDraftCard onClick={() => setEditing("new")} />
           {templates.map((t) => (
-            <div key={t.id} className="rounded-xl p-4 flex flex-col" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
-              <div className="flex items-start justify-between mb-2">
-                <div className="rounded-lg flex items-center justify-center" style={{ width: 34, height: 34, background: "#EFF6FF" }}>
-                  <LayoutTemplate size={16} color="#2563EB" />
-                </div>
-                <div className="flex gap-1.5">
-                  <button onClick={() => onDuplicate(t.id)} title="Duplicate" style={{ color: "#64748B", cursor: "pointer" }}><Copy size={13} /></button>
-                  <button onClick={() => setEditing(t.id)} title="Edit" style={{ color: "#64748B", cursor: "pointer" }}><Pencil size={13} /></button>
-                  <button onClick={() => onDelete(t.id)} title="Archive" style={{ color: "#DC2626", cursor: "pointer" }}><Trash2 size={13} /></button>
-                </div>
-              </div>
-              <p style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{t.name}</p>
-              <p className="truncate" style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>{t.subjectDefault || "No subject"}</p>
-              <p style={{ fontSize: 11, color: "#94A3B8", marginTop: "auto", paddingTop: 12 }}>
-                {t.category ? <span className="rounded-full px-2 py-0.5" style={{ background: "#F1F5F9", marginRight: 6 }}>{t.category}</span> : null}
-                Updated {fmtDate(t.updatedAt)}
-              </p>
-            </div>
+            <TemplateCard key={t.id} t={t} detail={details[t.id]}
+              onOpen={() => setEditing(t.id)} onDuplicate={() => onDuplicate(t.id)} onDelete={() => onDelete(t.id)} />
           ))}
         </div>
       )}
@@ -78,6 +76,90 @@ export function ContentView() {
       {editing !== null && (
         <TemplateEditor id={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />
       )}
+    </div>
+  );
+}
+
+const cap = (s?: string | null) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
+
+/** Dashed starter card — opens the editor on a fresh template. */
+function BlankDraftCard({ onClick }: { onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="rounded-xl flex flex-col items-center justify-center text-center"
+      style={{ minHeight: 360, background: "#FFFFFF", border: "1.5px dashed var(--border)", cursor: "pointer", fontFamily: font, transition: "border-color .15s, background .15s" }}
+      onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#2563EB"; e.currentTarget.style.background = "#F8FAFF"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "#FFFFFF"; }}>
+      <div className="rounded-full flex items-center justify-center" style={{ width: 46, height: 46, background: "#EFF6FF", marginBottom: 14 }}>
+        <Pencil size={18} color="#2563EB" />
+      </div>
+      <span style={{ fontSize: 14, fontWeight: 600, color: "#0F172A" }}>Blank draft</span>
+      <span style={{ fontSize: 12.5, color: "#94A3B8", marginTop: 4 }}>Create a blank draft from scratch</span>
+    </button>
+  );
+}
+
+function MenuItem({ icon: Icon, label, onClick, danger }: { icon: typeof Pencil; label: string; onClick: () => void; danger?: boolean }) {
+  return (
+    <button onClick={onClick} className="flex items-center gap-2.5 w-full rounded text-left"
+      style={{ padding: "7px 9px", fontSize: 13, color: danger ? "#DC2626" : "#0F172A", background: "transparent", cursor: "pointer" }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = danger ? "#FEF2F2" : "#F1F5F9")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+      <Icon size={14} /> {label}
+    </button>
+  );
+}
+
+/** Beehiiv-style template card: tall content preview + name/menu footer. */
+function TemplateCard({ t, detail, onOpen, onDuplicate, onDelete }: { t: Template; detail?: Template; onOpen: () => void; onDuplicate: () => void; onDelete: () => void }) {
+  const [menu, setMenu] = useState(false);
+  const design = (detail?.design || {}) as Record<string, unknown>;
+  const thumb = typeof design.thumbnail === "string" ? design.thumbnail : "";
+  const html = detail?.htmlBody || "";
+  return (
+    <div className="rounded-xl flex flex-col" style={{ background: "#FFFFFF", border: "1px solid var(--border)", overflow: "hidden" }}>
+      <button onClick={onOpen} className="block text-left relative"
+        style={{ height: 300, width: "100%", overflow: "hidden", background: "#FFFFFF", borderBottom: "1px solid var(--border)", cursor: "pointer", padding: 0 }}>
+        {thumb ? (
+          <img src={thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        ) : (
+          <div style={{ position: "absolute", inset: 0 }}>
+            {/* Rendered at 2× then scaled to 0.5 so the body reads like a shrunk page. */}
+            <div style={{ position: "absolute", top: 0, left: 0, width: "200%", transform: "scale(0.5)", transformOrigin: "top left", padding: "26px 28px", pointerEvents: "none" }}>
+              <div style={{ fontSize: 11, color: "#94A3B8", textAlign: "right", marginBottom: 10 }}>{fmtDate(t.updatedAt)}</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: "#0F172A", lineHeight: 1.2, letterSpacing: "-0.01em", marginBottom: 12 }}>{t.subjectDefault || t.name}</div>
+              {html ? (
+                <div style={{ fontSize: 14, lineHeight: 1.6, color: "#334155" }} dangerouslySetInnerHTML={{ __html: html }} />
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: 2 }}>
+                  {[100, 96, 92, 98, 70, 88, 94].map((w, i) => <div key={i} style={{ height: 9, borderRadius: 5, background: "#EEF2F6", width: `${w}%` }} />)}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </button>
+      <div className="flex items-center justify-between gap-2" style={{ padding: "12px 14px" }}>
+        <div style={{ minWidth: 0 }}>
+          <p className="truncate" style={{ fontSize: 13.5, fontWeight: 600, color: "#0F172A" }}>{t.name}</p>
+          <p className="truncate" style={{ fontSize: 11.5, color: "#94A3B8", marginTop: 2 }}>{t.category ? `${cap(t.category)} · ` : ""}Updated {fmtDate(t.updatedAt)}</p>
+        </div>
+        <div className="relative" style={{ flexShrink: 0 }}>
+          <button onClick={() => setMenu((v) => !v)} title="More" className="flex items-center justify-center rounded-lg"
+            style={{ width: 30, height: 30, color: "#64748B", background: menu ? "#F1F5F9" : "transparent", border: `1px solid ${menu ? "var(--border)" : "transparent"}`, cursor: "pointer" }}>
+            <MoreVertical size={16} />
+          </button>
+          {menu && (
+            <>
+              <div className="fixed inset-0" style={{ zIndex: 40 }} onClick={() => setMenu(false)} />
+              <div className="absolute rounded-lg" style={{ right: 0, top: 36, zIndex: 50, width: 158, background: "#FFFFFF", border: "1px solid var(--border)", boxShadow: "0 8px 28px rgba(15,23,42,0.14)", padding: 4 }}>
+                <MenuItem icon={Pencil} label="Edit" onClick={() => { setMenu(false); onOpen(); }} />
+                <MenuItem icon={Copy} label="Duplicate" onClick={() => { setMenu(false); onDuplicate(); }} />
+                <MenuItem icon={Trash2} label="Archive" danger onClick={() => { setMenu(false); onDelete(); }} />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
