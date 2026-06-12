@@ -1,10 +1,11 @@
 "use client";
 
 import { FileText, Plus, Pencil, Trash2, Copy, X, ArrowRight, Image as ImageIcon, Tag, MoreVertical, Sparkles, Type } from "lucide-react";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { renderEmailHtml } from "@/lib/emailRender";
 import { listTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate, duplicateTemplate, type Template } from "@/lib/templates";
 
 const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
@@ -500,8 +501,15 @@ function TemplateEditor({ id, seed, onClose, onSaved }: { id: number | null; see
   const [loading, setLoading] = useState(!!id);
   const [busy, setBusy] = useState(false);
   const [savedState, setSavedState] = useState<"synced" | "saving" | "unsaved">("synced");
-  const skipFirstEdit = useRef(true);
+  const [editorReady, setEditorReady] = useState(false);
+  const lastSaved = useRef<string | null>(null);
   const thumbRef = useRef<HTMLInputElement>(null);
+
+  // Email-ready HTML rendered from the editor's semantic HTML + Style. This is
+  // what we persist as htmlBody (campaigns send it) and what the size gauge
+  // measures, so the inbox matches the editor.
+  const emailHtml = useMemo(() => renderEmailHtml(body, style), [body, style]);
+  const snapshot = JSON.stringify({ name, subject, body, editorDoc, thumbnail, tags, style });
 
   useEffect(() => {
     if (id == null) return;
@@ -516,33 +524,41 @@ function TemplateEditor({ id, seed, onClose, onSaved }: { id: number | null; see
     });
   }, [id]);
 
-  // Autosave (existing templates) — debounced PATCH after edits stop.
+  // Baseline snapshot, captured once the editor has emitted its initial
+  // content — so simply opening a template never counts as an edit.
   useEffect(() => {
-    if (loading) return;
-    if (skipFirstEdit.current) { skipFirstEdit.current = false; return; }
+    if (loading || !editorReady || lastSaved.current !== null) return;
+    lastSaved.current = snapshot;
+  }, [loading, editorReady, snapshot]);
+
+  // Autosave (existing templates) — debounced PATCH after real edits stop.
+  useEffect(() => {
+    if (loading || !editorReady || lastSaved.current === null) return;
+    if (snapshot === lastSaved.current) { setSavedState("synced"); return; }
     if (id == null) { setSavedState("unsaved"); return; } // new template saves on Create
     setSavedState("unsaved");
     const t = setTimeout(async () => {
       setSavedState("saving");
-      const ok = await updateTemplate(id, { name: name.trim() || "Untitled template", subjectDefault: subject.trim(), htmlBody: body, design: { doc: editorDoc, thumbnail, tags, style } });
+      const ok = await updateTemplate(id, { name: name.trim() || "Untitled template", subjectDefault: subject.trim(), htmlBody: emailHtml, design: { doc: editorDoc, thumbnail, tags, style } });
+      if (ok) lastSaved.current = snapshot;
       setSavedState(ok ? "synced" : "unsaved");
     }, 1200);
     return () => clearTimeout(t);
-  }, [name, subject, body, editorDoc, thumbnail, tags, style, id, loading]);
+  }, [snapshot, emailHtml, name, subject, editorDoc, thumbnail, tags, style, id, loading, editorReady]);
 
   const save = async () => {
     if (!name.trim()) { alert("Template name is required."); return; }
     setBusy(true);
-    const payload = { name: name.trim(), subjectDefault: subject.trim(), htmlBody: body, design: { doc: editorDoc, thumbnail, tags, style } };
+    const payload = { name: name.trim(), subjectDefault: subject.trim(), htmlBody: emailHtml, design: { doc: editorDoc, thumbnail, tags, style } };
     let ok = false; let savedId = id ?? undefined;
     if (id != null) { ok = await updateTemplate(id, payload); }
     else { const res = await createTemplate(payload); ok = res.ok; savedId = res.id; }
     setBusy(false);
-    if (ok) { setSavedState("synced"); onSaved(savedId); } else alert("Save failed.");
+    if (ok) { lastSaved.current = snapshot; setSavedState("synced"); onSaved(savedId); } else alert("Save failed.");
   };
 
   const wordCount = body.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").trim().split(/\s+/).filter(Boolean).length;
-  const sizeBytes = typeof window !== "undefined" ? new Blob([body]).size : body.length;
+  const sizeBytes = typeof window !== "undefined" ? new Blob([emailHtml]).size : emailHtml.length;
   const sizePct = Math.min(100, (sizeBytes / 102400) * 100); // Gmail clips ~102KB
   const sync = busy ? "saving" : savedState;
   const syncLabel = sync === "saving" ? "Saving…" : sync === "unsaved" ? "Unsaved" : "Synced";
@@ -616,7 +632,9 @@ function TemplateEditor({ id, seed, onClose, onSaved }: { id: number | null; see
               ref={(el) => { if (el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; } }}
               onInput={(e) => { const t = e.currentTarget; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }}
               style={{ width: "100%", fontSize: 36, fontWeight: 700, color: style.textColor, border: "none", outline: "none", background: "transparent", resize: "none", lineHeight: 1.15, letterSpacing: "-0.02em", fontFamily: style.fontFamily, marginBottom: 14, overflow: "hidden" }} />
-            <RichTextEditor value={body} onChange={(html, json) => { setBody(html); setEditorDoc(json); }} placeholder="Start writing your email…" bare />
+            <RichTextEditor value={body} doc={editorDoc} accent={style.accent}
+              onChange={(html, json) => { setBody(html); setEditorDoc(json); setEditorReady(true); }}
+              placeholder="Start writing your email…" bare />
           </div>
         )}
       </div>

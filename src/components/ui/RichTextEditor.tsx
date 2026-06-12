@@ -2,6 +2,7 @@
 
 import { useRef } from "react";
 import { useEditor, EditorContent, BubbleMenu, type Editor } from "@tiptap/react";
+import type { Content } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -14,8 +15,13 @@ import { Bold, Italic, Strikethrough, Heading1, Heading2, Heading3, List, ListOr
 const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
 
 /** TipTap block editor — Beehiiv-style writing experience. Emits HTML + JSON. */
-export function RichTextEditor({ value, onChange, placeholder = "Write your email…", bare = false }: {
+export function RichTextEditor({ value, doc, accent, onChange, placeholder = "Write your email…", bare = false }: {
   value?: string;
+  /** TipTap JSON to load instead of `value` (preferred — avoids re-parsing
+   *  the email HTML we store in htmlBody). Falls back to `value`. */
+  doc?: unknown;
+  /** Accent color for links / blockquote, so the canvas matches the email. */
+  accent?: string;
   onChange?: (html: string, json: unknown) => void;
   placeholder?: string;
   /** Borderless, blends into a full-page canvas (Beehiiv style). */
@@ -32,7 +38,10 @@ export function RichTextEditor({ value, onChange, placeholder = "Write your emai
       GlobalDragHandle.configure({ dragHandleWidth: 24, scrollTreshold: 100 }),
       AutoJoiner,
     ],
-    content: value || "",
+    content: ((doc as Content) ?? value ?? "") as Content,
+    // Emit once on create so the parent captures the canonical HTML + JSON for
+    // whatever content was loaded (doc, value, or a seeded template).
+    onCreate: ({ editor }) => onChange?.(editor.getHTML(), editor.getJSON()),
     onUpdate: ({ editor }) => onChange?.(editor.getHTML(), editor.getJSON()),
     editorProps: {
       attributes: { class: "nx-prose" },
@@ -67,11 +76,11 @@ export function RichTextEditor({ value, onChange, placeholder = "Write your emai
   if (!editor) return <div style={{ height: 300, background: bare ? "transparent" : "#F8FAFC", borderRadius: 8 }} />;
 
   const outer = bare
-    ? { background: "transparent", fontFamily: font }
+    ? { background: "transparent", fontFamily: "inherit" }
     : { border: "1px solid var(--border)", background: "#FFFFFF", fontFamily: font, borderRadius: 8, overflow: "hidden" };
 
   return (
-    <div style={outer}>
+    <div style={{ ...outer, ...(accent ? { ["--nx-accent"]: accent } : {}) } as React.CSSProperties}>
       <Toolbar editor={editor} bare={bare} />
       <BubbleMenu editor={editor} tippyOptions={{ duration: 120 }}>
         <div className="flex items-center gap-0.5 rounded-lg px-1 py-0.5" style={{ background: "#0F172A", boxShadow: "0 4px 16px rgba(0,0,0,0.25)" }}>
@@ -156,7 +165,7 @@ function ProseStyles({ bare = false }: { bare?: boolean }) {
   const minH = bare ? 360 : 260;
   return (
     <style>{`
-      .nx-prose { min-height: ${minH}px; padding: ${pad}; outline: none; font-size: ${fs}px; line-height: ${lh}; color: #1A2231; font-family: ${font}; }
+      .nx-prose { min-height: ${minH}px; padding: ${pad}; outline: none; font-size: ${fs}px; line-height: ${lh}; color: ${bare ? "inherit" : "#1A2231"}; font-family: ${bare ? "inherit" : font}; }
       .nx-prose:focus { outline: none; }
       .nx-prose p { margin: 0 0 ${bare ? 16 : 10}px; }
       .nx-prose h1 { font-size: ${bare ? 34 : 26}px; font-weight: 700; margin: ${bare ? 28 : 18}px 0 ${bare ? 12 : 8}px; line-height: 1.2; letter-spacing: -0.01em; }
@@ -165,8 +174,8 @@ function ProseStyles({ bare = false }: { bare?: boolean }) {
       .nx-prose ul, .nx-prose ol { padding-left: 22px; margin: 0 0 10px; }
       .nx-prose ul { list-style: disc; } .nx-prose ol { list-style: decimal; }
       .nx-prose li { margin: 2px 0; }
-      .nx-prose blockquote { border-left: 3px solid #CBD5E1; padding-left: 12px; margin: 12px 0; color: #475569; font-style: italic; }
-      .nx-prose a { color: #2563EB; text-decoration: underline; }
+      .nx-prose blockquote { border-left: 3px solid ${bare ? "var(--nx-accent, #CBD5E1)" : "#CBD5E1"}; padding-left: 12px; margin: 12px 0; color: #475569; font-style: italic; }
+      .nx-prose a { color: var(--nx-accent, #2563EB); text-decoration: underline; }
       .nx-prose img { max-width: 100%; border-radius: 8px; margin: 8px 0; }
       .nx-prose hr { border: none; border-top: 1px solid #E2E8F0; margin: 16px 0; }
       .nx-prose code { background: #F1F5F9; padding: 1px 5px; border-radius: 4px; font-family: monospace; font-size: 12px; }
