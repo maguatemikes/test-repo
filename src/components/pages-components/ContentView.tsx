@@ -118,15 +118,18 @@ function StyleRow({ label, children }: { label: string; children: React.ReactNod
 }
 
 function ColorField({ value, onChange }: { value: string; onChange: (c: string) => void }) {
-  // <input type=color> only accepts a lowercase #rrggbb. Keep the controlled
-  // value lowercase so it always matches the browser-normalized DOM value --
-  // a case mismatch makes React re-commit every render and, under the stream
-  // of input events the native picker emits, loops to "max update depth".
+  // The input is UNCONTROLLED (defaultValue, not value). A controlled
+  // <input type=color> loops forever during a native-picker drag: committed
+  // state lags the live DOM value, so every re-render writes the stale value
+  // back into the input, interrupting the drag and firing another input
+  // event -> "Maximum update depth exceeded". Uncontrolled = React never
+  // writes value back, so there's no fight. A local `shown` drives the label.
   const v = /^#[0-9a-fA-F]{6}$/.test(value) ? value.toLowerCase() : "#000000";
+  const [shown, setShown] = useState(v);
   return (
     <span className="flex items-center gap-2">
-      <span style={{ fontSize: 12, color: "#94A3B8", fontVariantNumeric: "tabular-nums", textTransform: "uppercase" }}>{v}</span>
-      <input type="color" value={v} onChange={(e) => onChange(e.target.value)} style={{ width: 36, height: 26, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer", padding: 0 }} />
+      <span style={{ fontSize: 12, color: "#94A3B8", fontVariantNumeric: "tabular-nums", textTransform: "uppercase" }}>{shown}</span>
+      <input type="color" defaultValue={v} onChange={(e) => { setShown(e.target.value); onChange(e.target.value); }} style={{ width: 36, height: 26, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer", padding: 0 }} />
     </span>
   );
 }
