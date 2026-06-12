@@ -4,6 +4,7 @@ import { FileText, Plus, Pencil, Trash2, Copy, X, ArrowRight, Image as ImageIcon
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { listTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate, duplicateTemplate, type Template } from "@/lib/templates";
 
 const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
@@ -14,6 +15,8 @@ export function ContentView() {
   const [details, setDetails] = useState<Record<number, Template>>({});
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<number | "new" | null>(null);
+  const [archiveId, setArchiveId] = useState<number | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
   const reload = useCallback(async () => { setLoading(true); setTemplates(await listTemplates()); setLoading(false); }, []);
   useEffect(() => { reload(); }, [reload]);
@@ -30,9 +33,13 @@ export function ContentView() {
     return () => { cancelled = true; };
   }, [templates]);
 
-  const onDelete = async (id: number) => {
-    if (!confirm("Archive this template?")) return;
-    if (await deleteTemplate(id)) reload(); else alert("Delete failed.");
+  const onDelete = (id: number) => setArchiveId(id);
+  const confirmArchive = async () => {
+    if (archiveId == null) return;
+    setArchiving(true);
+    const ok = await deleteTemplate(archiveId);
+    setArchiving(false);
+    if (ok) { setArchiveId(null); reload(); } else alert("Archive failed.");
   };
   const onDuplicate = async (id: number) => {
     if (await duplicateTemplate(id)) reload(); else alert("Duplicate failed.");
@@ -76,6 +83,17 @@ export function ContentView() {
       {editing !== null && (
         <TemplateEditor id={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />
       )}
+
+      <ConfirmDialog
+        open={archiveId !== null}
+        danger
+        title="Archive this template?"
+        message={`“${templates.find((t) => t.id === archiveId)?.name ?? "This template"}” will be moved to your archive. Campaigns already sent are unaffected.`}
+        confirmLabel="Archive"
+        busy={archiving}
+        onConfirm={confirmArchive}
+        onCancel={() => { if (!archiving) setArchiveId(null); }}
+      />
     </div>
   );
 }
