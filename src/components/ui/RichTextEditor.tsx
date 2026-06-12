@@ -7,6 +7,8 @@ import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import { SlashCommands } from "@/components/ui/slashCommands";
+import GlobalDragHandle from "tiptap-extension-global-drag-handle";
+import AutoJoiner from "tiptap-extension-auto-joiner";
 import { Bold, Italic, Strikethrough, Heading1, Heading2, Heading3, List, ListOrdered, Quote, Minus, Link2, ImageIcon, Undo2, Redo2 } from "lucide-react";
 
 const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
@@ -27,6 +29,8 @@ export function RichTextEditor({ value, onChange, placeholder = "Write your emai
       Image.configure({ inline: false, allowBase64: true }),
       Placeholder.configure({ placeholder }),
       SlashCommands,
+      GlobalDragHandle.configure({ dragHandleWidth: 24, scrollTreshold: 100 }),
+      AutoJoiner,
     ],
     content: value || "",
     onUpdate: ({ editor }) => onChange?.(editor.getHTML(), editor.getJSON()),
@@ -167,6 +171,10 @@ function ProseStyles({ bare = false }: { bare?: boolean }) {
       .nx-prose hr { border: none; border-top: 1px solid #E2E8F0; margin: 16px 0; }
       .nx-prose code { background: #F1F5F9; padding: 1px 5px; border-radius: 4px; font-family: monospace; font-size: 12px; }
       .nx-prose p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: #94A3B8; float: left; height: 0; pointer-events: none; }
+      .drag-handle { position: fixed; opacity: 1; transition: opacity 0.2s ease; border-radius: 5px; width: 22px; height: 22px; z-index: 40; cursor: grab; background-repeat: no-repeat; background-position: center; background-size: 13px; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="16" viewBox="0 0 10 16" fill="%2394A3B8"><circle cx="2.5" cy="3" r="1.3"/><circle cx="7.5" cy="3" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="13" r="1.3"/><circle cx="7.5" cy="13" r="1.3"/></svg>'); }
+      .drag-handle:hover { background-color: #F1F5F9; }
+      .drag-handle:active { cursor: grabbing; }
+      .drag-handle.hide { opacity: 0; pointer-events: none; }
     `}</style>
   );
 }
