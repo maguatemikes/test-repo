@@ -4,6 +4,7 @@ import { LayoutTemplate, FileText, Plus, Pencil, Trash2, Copy, X, ArrowRight } f
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { listTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate, duplicateTemplate, type Template } from "@/lib/templates";
 
 const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
@@ -85,13 +86,14 @@ function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: 
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  const [design, setDesign] = useState<unknown>(null);
   const [loading, setLoading] = useState(!!id);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (id == null) return;
     getTemplate(id).then((t) => {
-      if (t) { setName(t.name); setSubject(t.subjectDefault || ""); setBody(t.htmlBody || ""); }
+      if (t) { setName(t.name); setSubject(t.subjectDefault || ""); setBody(t.htmlBody || ""); setDesign(t.design ?? null); }
       setLoading(false);
     });
   }, [id]);
@@ -101,7 +103,7 @@ function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: 
   const save = async () => {
     if (!name.trim()) { alert("Template name is required."); return; }
     setBusy(true);
-    const payload = { name: name.trim(), subjectDefault: subject.trim(), htmlBody: body };
+    const payload = { name: name.trim(), subjectDefault: subject.trim(), htmlBody: body, design };
     const ok = id != null ? await updateTemplate(id, payload) : (await createTemplate(payload)).ok;
     setBusy(false);
     if (ok) onSaved(); else alert("Save failed.");
@@ -126,17 +128,10 @@ function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: 
               <label style={{ fontSize: 12, fontWeight: 500, color: "#0F172A", display: "block", marginBottom: 6 }}>Subject line</label>
               <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g. Your June deals are here 🎉" style={input} />
             </div>
-            <div className="grid gap-3 grid-cols-1 lg:grid-cols-2">
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 500, color: "#0F172A", display: "block", marginBottom: 6 }}>Body (HTML)</label>
-                <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={12} placeholder="<h1>Hello</h1><p>…</p>" style={{ ...input, fontFamily: "monospace", fontSize: 12, resize: "vertical" }} />
-                <p style={{ fontSize: 11, color: "#94A3B8", marginTop: 4 }}>HTML editor — the Unlayer drag-and-drop builder (design JSON) comes later.</p>
-              </div>
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 500, color: "#0F172A", display: "block", marginBottom: 6 }}>Preview</label>
-                <div className="rounded-lg p-3" style={{ border: "1px solid var(--border)", background: "#F8FAFC", minHeight: 240, fontSize: 13, color: "#0F172A", overflow: "auto" }}
-                  dangerouslySetInnerHTML={{ __html: body || "<p style='color:#94A3B8'>Nothing to preview yet.</p>" }} />
-              </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 500, color: "#0F172A", display: "block", marginBottom: 6 }}>Email body</label>
+              <RichTextEditor value={body} onChange={(html, json) => { setBody(html); setDesign(json); }} placeholder="Write your email — headings, lists, images, links…" />
+              <p style={{ fontSize: 11, color: "#94A3B8", marginTop: 4 }}>Block editor — saves both the HTML (for sending) and the design JSON.</p>
             </div>
           </div>
         )}
