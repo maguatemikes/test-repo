@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Plus, Pencil, Trash2, Copy, X, ArrowRight, Image as ImageIcon, Tag, MoreVertical, Sparkles } from "lucide-react";
+import { FileText, Plus, Pencil, Trash2, Copy, X, ArrowRight, Image as ImageIcon, Tag, MoreVertical, Sparkles, Type } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
@@ -18,6 +18,9 @@ export function ContentView() {
   const [seed, setSeed] = useState<QuickStart | null>(null);
   const [archiveId, setArchiveId] = useState<number | null>(null);
   const [archiving, setArchiving] = useState(false);
+  const [renameId, setRenameId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renaming, setRenaming] = useState(false);
 
   const reload = useCallback(async () => { setLoading(true); setTemplates(await listTemplates()); setLoading(false); }, []);
   useEffect(() => { reload(); }, [reload]);
@@ -44,6 +47,15 @@ export function ContentView() {
   };
   const onDuplicate = async (id: number) => {
     if (await duplicateTemplate(id)) reload(); else alert("Duplicate failed.");
+  };
+  const onRename = (id: number, current: string) => { setRenameValue(current); setRenameId(id); };
+  const confirmRename = async () => {
+    const name = renameValue.trim();
+    if (renameId == null || !name) return;
+    setRenaming(true);
+    const ok = await updateTemplate(renameId, { name });
+    setRenaming(false);
+    if (ok) { setRenameId(null); reload(); } else alert("Rename failed.");
   };
 
   return (
@@ -88,7 +100,7 @@ export function ContentView() {
           <BlankDraftCard onClick={() => setEditing("new")} />
           {templates.map((t) => (
             <TemplateCard key={t.id} t={t} detail={details[t.id]}
-              onOpen={() => setEditing(t.id)} onDuplicate={() => onDuplicate(t.id)} onDelete={() => onDelete(t.id)} />
+              onOpen={() => setEditing(t.id)} onRename={() => onRename(t.id, t.name)} onDuplicate={() => onDuplicate(t.id)} onDelete={() => onDelete(t.id)} />
           ))}
         </div>
       )}
@@ -119,6 +131,20 @@ export function ContentView() {
         onConfirm={confirmArchive}
         onCancel={() => { if (!archiving) setArchiveId(null); }}
       />
+
+      {renameId !== null && (
+        <div onClick={() => { if (!renaming) setRenameId(null); }} className="fixed inset-0 z-[60] flex items-center justify-center" style={{ background: "rgba(15,23,42,0.4)", fontFamily: font }}>
+          <form onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); confirmRename(); }} className="rounded-xl" style={{ background: "#FFFFFF", width: 420, maxWidth: "90vw", padding: 22 }}>
+            <h3 style={{ fontSize: 15, fontWeight: 600, color: "#0F172A" }}>Rename template</h3>
+            <input autoFocus value={renameValue} onChange={(e) => setRenameValue(e.target.value)} placeholder="Template name"
+              style={{ width: "100%", marginTop: 14, fontSize: 13, color: "#0F172A", padding: "9px 11px", border: "1px solid var(--border)", borderRadius: 8, outline: "none", background: "#FFFFFF" }} />
+            <div className="flex justify-end gap-2" style={{ marginTop: 18 }}>
+              <button type="button" onClick={() => setRenameId(null)} disabled={renaming} style={{ fontSize: 12, fontWeight: 500, color: "#64748B", background: "#F1F5F9", border: "none", padding: "8px 16px", borderRadius: 6, cursor: "pointer" }}>Cancel</button>
+              <button type="submit" disabled={renaming || !renameValue.trim()} style={{ fontSize: 12, fontWeight: 500, color: "#FFFFFF", background: "#2563EB", border: "none", padding: "8px 18px", borderRadius: 6, cursor: "pointer", opacity: renaming || !renameValue.trim() ? 0.6 : 1 }}>{renaming ? "Saving…" : "Save"}</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
@@ -153,7 +179,7 @@ function MenuItem({ icon: Icon, label, onClick, danger }: { icon: typeof Pencil;
 }
 
 /** Beehiiv-style template card: tall content preview + name/menu footer. */
-function TemplateCard({ t, detail, onOpen, onDuplicate, onDelete }: { t: Template; detail?: Template; onOpen: () => void; onDuplicate: () => void; onDelete: () => void }) {
+function TemplateCard({ t, detail, onOpen, onRename, onDuplicate, onDelete }: { t: Template; detail?: Template; onOpen: () => void; onRename: () => void; onDuplicate: () => void; onDelete: () => void }) {
   const [menu, setMenu] = useState(false);
   const design = (detail?.design || {}) as Record<string, unknown>;
   const thumb = typeof design.thumbnail === "string" ? design.thumbnail : "";
@@ -197,6 +223,7 @@ function TemplateCard({ t, detail, onOpen, onDuplicate, onDelete }: { t: Templat
               {/* Kebab sits in the footer at the card's bottom edge, so the menu always opens upward. */}
               <div className="absolute rounded-lg" style={{ right: 0, bottom: 36, zIndex: 50, width: 158, background: "#FFFFFF", border: "1px solid var(--border)", boxShadow: "0 8px 28px rgba(15,23,42,0.14)", padding: 4 }}>
                 <MenuItem icon={Pencil} label="Edit" onClick={() => { setMenu(false); onOpen(); }} />
+                <MenuItem icon={Type} label="Rename" onClick={() => { setMenu(false); onRename(); }} />
                 <MenuItem icon={Copy} label="Duplicate" onClick={() => { setMenu(false); onDuplicate(); }} />
                 <MenuItem icon={Trash2} label="Archive" danger onClick={() => { setMenu(false); onDelete(); }} />
               </div>
