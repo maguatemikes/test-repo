@@ -6,6 +6,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
+import { SlashCommands } from "@/components/ui/slashCommands";
 import { Bold, Italic, Strikethrough, Heading1, Heading2, Heading3, List, ListOrdered, Quote, Minus, Link2, ImageIcon, Undo2, Redo2 } from "lucide-react";
 
 const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
@@ -25,6 +26,7 @@ export function RichTextEditor({ value, onChange, placeholder = "Write your emai
       Link.configure({ openOnClick: false, HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" } }),
       Image.configure({ inline: false, allowBase64: true }),
       Placeholder.configure({ placeholder }),
+      SlashCommands,
     ],
     content: value || "",
     onUpdate: ({ editor }) => onChange?.(editor.getHTML(), editor.getJSON()),
