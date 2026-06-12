@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Plus, Pencil, Trash2, Copy, X, ArrowRight, Image as ImageIcon, Tag, MoreVertical } from "lucide-react";
+import { FileText, Plus, Pencil, Trash2, Copy, X, ArrowRight, Image as ImageIcon, Tag, MoreVertical, Sparkles } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
@@ -15,6 +15,7 @@ export function ContentView() {
   const [details, setDetails] = useState<Record<number, Template>>({});
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<number | "new" | null>(null);
+  const [seed, setSeed] = useState<QuickStart | null>(null);
   const [archiveId, setArchiveId] = useState<number | null>(null);
   const [archiving, setArchiving] = useState(false);
 
@@ -47,6 +48,18 @@ export function ContentView() {
 
   return (
     <div className="p-6 space-y-5" style={{ fontFamily: font }}>
+      <style>{`
+        .nx-doc-html img { max-width:100%; height:auto; border-radius:8px; margin:10px 0; display:block; }
+        .nx-doc-html h1 { font-size:26px; font-weight:700; line-height:1.2; margin:6px 0 8px; color:#0F172A; }
+        .nx-doc-html h2 { font-size:19px; font-weight:700; margin:16px 0 6px; color:#0F172A; }
+        .nx-doc-html h3 { font-size:16px; font-weight:600; margin:12px 0 4px; color:#0F172A; }
+        .nx-doc-html p { margin:8px 0; }
+        .nx-doc-html ul, .nx-doc-html ol { padding-left:20px; margin:8px 0; }
+        .nx-doc-html li { margin:4px 0; }
+        .nx-doc-html blockquote { border-left:3px solid #E2E8F0; padding-left:12px; color:#64748B; font-style:italic; margin:10px 0; }
+        .nx-doc-html hr { border:none; border-top:1px solid #E2E8F0; margin:16px 0; }
+        .nx-doc-html a { color:#2563EB; }
+      `}</style>
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 style={{ fontSize: 18, fontWeight: 600, color: "#0F172A" }}>Content</h1>
@@ -80,8 +93,20 @@ export function ContentView() {
         </div>
       )}
 
+      <div className="pt-2">
+        <h2 style={{ fontSize: 15, fontWeight: 600, color: "#0F172A" }}>Quick start templates</h2>
+        <p style={{ fontSize: 12.5, color: "#64748B", marginTop: 2 }}>Choose from a premade template to get started writing.</p>
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 mt-4">
+          {QUICK_STARTS.map((qs) => (
+            <QuickStartCard key={qs.key} qs={qs} onUse={() => { setSeed(qs); setEditing("new"); }} />
+          ))}
+        </div>
+      </div>
+
       {editing !== null && (
-        <TemplateEditor id={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={(savedId) => { reload(); if (savedId != null) setEditing(savedId); }} />
+        <TemplateEditor id={editing === "new" ? null : editing} seed={editing === "new" ? seed : null}
+          onClose={() => { setEditing(null); setSeed(null); }}
+          onSaved={(savedId) => { reload(); setSeed(null); if (savedId != null) setEditing(savedId); }} />
       )}
 
       <ConfirmDialog
@@ -146,7 +171,7 @@ function TemplateCard({ t, detail, onOpen, onDuplicate, onDelete }: { t: Templat
               <div style={{ fontSize: 11, color: "#94A3B8", textAlign: "right", marginBottom: 10 }}>{fmtDate(t.updatedAt)}</div>
               <div style={{ fontSize: 24, fontWeight: 700, color: "#0F172A", lineHeight: 1.2, letterSpacing: "-0.01em", marginBottom: 12 }}>{t.subjectDefault || t.name}</div>
               {html ? (
-                <div style={{ fontSize: 14, lineHeight: 1.6, color: "#334155" }} dangerouslySetInnerHTML={{ __html: html }} />
+                <div className="nx-doc-html" style={{ fontSize: 14, lineHeight: 1.6, color: "#334155" }} dangerouslySetInnerHTML={{ __html: html }} />
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: 2 }}>
                   {[100, 96, 92, 98, 70, 88, 94].map((w, i) => <div key={i} style={{ height: 9, borderRadius: 5, background: "#EEF2F6", width: `${w}%` }} />)}
@@ -197,6 +222,133 @@ function SizeGauge({ pct, kb }: { pct: number; kb: number }) {
         <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke={color} strokeWidth="10" strokeLinecap="round" strokeDasharray="126" strokeDashoffset={offset} />
       </svg>
       <span style={{ fontSize: 11, color, fontVariantNumeric: "tabular-nums" }}>{kb.toFixed(0)}KB</span>
+    </div>
+  );
+}
+
+/* ---- Quick start templates ---------------------------------------------- */
+// Premade newsletters that seed the editor. Images are HOSTED (Unsplash) so
+// they render in the preview AND survive real email delivery (base64 would be
+// stripped by Gmail/Outlook). The `html` is rendered by TipTap StarterKit tags.
+export type QuickStart = { key: string; name: string; subject: string; tags: string[]; html: string };
+
+const img = (id: string) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=1200&q=80`;
+
+const QUICK_STARTS: QuickStart[] = [
+  {
+    key: "classic-editorial", name: "Classic Editorial", subject: "Inside the City's Most Stylish Spaces", tags: ["editorial", "design"],
+    html: `<h1>The Nordiske — Issue 01</h1>
+<p><em>Discover minimalist homes, visionary design, and the quiet soul of Scandinavian living.</em></p>
+<img src="${img("1506905925346-21bda4d32df4")}" alt="Nordic landscape">
+<h2>Hej from the North</h2>
+<p>Welcome to the premiere issue of <strong>Nordiske Hum</strong> — your curated journal for modern Scandinavian living. Each edition brings you design that quietly leaves a mark: thoughtful, tactile, and built to last.</p>
+<p>This week we tour three homes that prove restraint is its own kind of luxury, and sit down with the makers behind them.</p>
+<blockquote>"Good design is as little design as possible." — Dieter Rams</blockquote>
+<hr>
+<p>Until next week,<br><strong>The Nordiske Team</strong></p>`,
+  },
+  {
+    key: "featured-interview", name: "Featured Interview", subject: "Working Remotely While Traveling the World", tags: ["interview", "people"],
+    html: `<h1>Ava Sinclair on Building a Career From Anywhere</h1>
+<p><em>How a travel creator built a thriving career while exploring the world with her dog.</em></p>
+<img src="${img("1494790108377-be9c29b29330")}" alt="Ava Sinclair">
+<h2>Meet Ava</h2>
+<p>Ava Sinclair is a remote content creator who left a traditional 9-to-5 after realizing she didn't have to choose between work and adventure. Five years later, she's still on the road.</p>
+<h3>On finding balance</h3>
+<p>"Some weeks I work from a café in Lisbon, others from a cabin in the mountains. The secret isn't the location — it's the rhythm."</p>
+<blockquote>You're reading <strong>Off Script</strong> — a slow newsletter about working and living a little differently.</blockquote>`,
+  },
+  {
+    key: "tech-roundup", name: "Tech Roundup", subject: "SF Weekly Pulse: Issue 02", tags: ["tech", "news"],
+    html: `<h1>SF Weekly Pulse — Issue 02</h1>
+<p><em>Another big week in San Francisco's tech ecosystem — funding, deadlines, and what's next.</em></p>
+<img src="${img("1498050108023-c5249f4df085")}" alt="Workspace">
+<h2>📌 Upcoming Deadlines</h2>
+<ul>
+<li><strong>TechCrunch Disrupt Battlefield</strong> — pitch for a chance at $100,000 in funding. Applications close April 15.</li>
+<li><strong>AI for Good Global Summit</strong> — $350,000 available for projects addressing global challenges.</li>
+</ul>
+<h2>Stay Inspired</h2>
+<p>Generative AI is showing up in unexpected places:</p>
+<ul>
+<li><strong>Healthcare:</strong> personalized treatment plans now piloted at 67% of major hospitals.</li>
+<li><strong>Creative industries:</strong> AI drafting first cuts for film, music, and design.</li>
+</ul>`,
+  },
+  {
+    key: "community-pulse", name: "Community Pulse", subject: "This week in Stride — new faces, tips & a coffee run", tags: ["community", "events"],
+    html: `<h1>This Week in Stride</h1>
+<p><em>Catch up on upcoming meetups, training hacks, and Kyle's 10K milestone.</em></p>
+<h2>Hey runners — here's what's happening</h2>
+<p>We've got fresh faces, new routes, and some serious miles ahead. Whether you're chasing a PR or just getting started, there's something here for you.</p>
+<img src="${img("1529156069898-49953e39b3ac")}" alt="Community run">
+<h3>Neighborhood runs &amp; meetups</h3>
+<ul>
+<li><strong>Tuesday</strong> — Riverside easy 5K · 6:30pm</li>
+<li><strong>Saturday</strong> — Hill repeats + coffee · 8:00am</li>
+</ul>
+<p>See you out there,<br><strong>The Stride Crew</strong></p>`,
+  },
+  {
+    key: "style-edit", name: "The Style Edit", subject: "Everything in Fashion This Week", tags: ["fashion", "lifestyle"],
+    html: `<h1>The Style Edit</h1>
+<p><em>From effortless streetwear to red-carpet moments — here's what we're obsessed with.</em></p>
+<img src="${img("1483985988355-763728e1935b")}" alt="Fashion rack">
+<h2>This week's obsessions</h2>
+<ul>
+<li>The return of the tailored trench</li>
+<li>Quiet luxury, louder accessories</li>
+<li>Five capsule pieces worth the splurge</li>
+</ul>
+<blockquote>Style is a way to say who you are without having to speak.</blockquote>`,
+  },
+  {
+    key: "wellness-reset", name: "Health & Wellness", subject: "Spring Cleaning for Your Health", tags: ["health", "wellness"],
+    html: `<h1>Spring Cleaning for Your Health</h1>
+<p><em>Small resets that make a big difference this season.</em></p>
+<img src="${img("1476480862126-209bfaa8edc8")}" alt="Forest trail">
+<h2>Three resets to try this week</h2>
+<ul>
+<li><strong>Move daily:</strong> a 20-minute walk still counts.</li>
+<li><strong>Hydrate first:</strong> a glass of water before your coffee.</li>
+<li><strong>Wind down:</strong> screens off 30 minutes before bed.</li>
+</ul>
+<p>Be well,<br><strong>The Wellness Desk</strong></p>`,
+  },
+];
+
+/** Premade newsletter card — clicking seeds the editor with this content. */
+function QuickStartCard({ qs, onUse }: { qs: QuickStart; onUse: () => void }) {
+  const [menu, setMenu] = useState(false);
+  return (
+    <div className="rounded-xl flex flex-col" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
+      <button onClick={onUse} className="block text-left relative"
+        style={{ height: 300, width: "100%", overflow: "hidden", background: "#FFFFFF", borderBottom: "1px solid var(--border)", borderTopLeftRadius: 12, borderTopRightRadius: 12, cursor: "pointer", padding: 0 }}>
+        <div style={{ position: "absolute", inset: 0 }}>
+          <div className="nx-doc-html" style={{ position: "absolute", top: 0, left: 0, width: "200%", transform: "scale(0.5)", transformOrigin: "top left", padding: "26px 28px", pointerEvents: "none", fontSize: 14, lineHeight: 1.6, color: "#334155" }}
+            dangerouslySetInnerHTML={{ __html: qs.html }} />
+        </div>
+      </button>
+      <div className="flex items-center justify-between gap-2" style={{ padding: "12px 14px" }}>
+        <div style={{ minWidth: 0 }}>
+          <p className="truncate" style={{ fontSize: 13.5, fontWeight: 600, color: "#0F172A" }}>{qs.name}</p>
+          <p className="truncate" style={{ fontSize: 11.5, color: "#94A3B8", marginTop: 2 }}>{qs.tags.map(cap).join(" · ")}</p>
+        </div>
+        <div className="relative" style={{ flexShrink: 0 }}>
+          <button onClick={() => setMenu((v) => !v)} title="More" className="flex items-center justify-center rounded-lg"
+            style={{ width: 30, height: 30, color: "#64748B", background: menu ? "#F1F5F9" : "transparent", border: `1px solid ${menu ? "var(--border)" : "transparent"}`, cursor: "pointer" }}>
+            <MoreVertical size={16} />
+          </button>
+          {menu && (
+            <>
+              <div className="fixed inset-0" style={{ zIndex: 40 }} onClick={() => setMenu(false)} />
+              <div className="absolute rounded-lg" style={{ right: 0, bottom: 36, zIndex: 50, width: 168, background: "#FFFFFF", border: "1px solid var(--border)", boxShadow: "0 8px 28px rgba(15,23,42,0.14)", padding: 4 }}>
+                <MenuItem icon={Sparkles} label="Use this template" onClick={() => { setMenu(false); onUse(); }} />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -264,13 +416,13 @@ function StylePanel({ value, onChange }: { value: StyleSettings; onChange: (s: S
   );
 }
 
-function TemplateEditor({ id, onClose, onSaved }: { id: number | null; onClose: () => void; onSaved: (savedId?: number) => void }) {
-  const [name, setName] = useState("");
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+function TemplateEditor({ id, seed, onClose, onSaved }: { id: number | null; seed?: QuickStart | null; onClose: () => void; onSaved: (savedId?: number) => void }) {
+  const [name, setName] = useState(seed?.name ?? "");
+  const [subject, setSubject] = useState(seed?.subject ?? "");
+  const [body, setBody] = useState(seed?.html ?? "");
   const [editorDoc, setEditorDoc] = useState<unknown>(null);
   const [thumbnail, setThumbnail] = useState<string>("");
-  const [tags, setTags] = useState<string[]>([]);
+  const [tags, setTags] = useState<string[]>(seed?.tags ?? []);
   const [style, setStyle] = useState<StyleSettings>(DEFAULT_STYLE);
   const [tab, setTab] = useState<"write" | "style">("write");
   const [tagInput, setTagInput] = useState("");
