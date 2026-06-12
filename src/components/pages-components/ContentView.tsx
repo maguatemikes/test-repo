@@ -257,11 +257,43 @@ function SizeGauge({ pct, kb }: { pct: number; kb: number }) {
 // Premade newsletters that seed the editor. Images are HOSTED (Unsplash) so
 // they render in the preview AND survive real email delivery (base64 would be
 // stripped by Gmail/Outlook). The `html` is rendered by TipTap StarterKit tags.
-export type QuickStart = { key: string; name: string; subject: string; tags: string[]; html: string };
+export type QuickStart = { key: string; name: string; subject: string; tags: string[]; html: string; style?: Partial<StyleSettings> };
 
 const img = (id: string) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=1200&q=80`;
 
 const QUICK_STARTS: QuickStart[] = [
+  {
+    key: "verde-home-retail", name: "Verde Home — Retail", subject: "Elevate the Everyday — New from Verde Home", tags: ["retail", "ecommerce"],
+    style: { fontFamily: "Georgia, 'Times New Roman', serif", textColor: "#2b2b2b", accent: "#1f4938", background: "#faf8f3", contentWidth: 680 },
+    html: `<p><em>Free shipping on orders over $75</em></p>
+<h1>Elevate the Everyday</h1>
+<p>Timeless pieces for a home you love.</p>
+<img src="${img("1493809842364-78817add7ffb")}" alt="Verde Home styling">
+<p><a href="#">Shop New Arrivals →</a></p>
+<hr>
+<h2>Featured Favorites</h2>
+<img src="${img("1485955900006-10f4d324d411")}" alt="Sand Ceramic Vase">
+<h3>Sand Ceramic Vase · $48</h3>
+<p>Handcrafted with a natural, textural finish. <a href="#">Shop now →</a></p>
+<img src="${img("1578749556568-bc2c40e68b61")}" alt="Forest Serving Bowl">
+<h3>Forest Serving Bowl · $36</h3>
+<p>Organic shape, everyday elegance. <a href="#">Shop now →</a></p>
+<img src="${img("1538688525198-9b88f6f53126")}" alt="Verde Scented Candle">
+<h3>Verde Scented Candle · $32</h3>
+<p>Notes of eucalyptus, sage &amp; cedar. <a href="#">Shop now →</a></p>
+<hr>
+<h2>Thoughtful design. Made to last.</h2>
+<img src="${img("1616486338812-3dadae4b4ace")}" alt="Verde Home interior">
+<p>At Verde Home, we believe your home should be a reflection of what matters most. We curate timeless pieces with intention — crafted for beauty, function, and the moments in between.</p>
+<p><a href="#">Learn more →</a></p>
+<hr>
+<h2>Loved by our community</h2>
+<blockquote>★★★★★<br>"The quality is exceptional and the pieces elevate every corner of my home. I'm a customer for life."<br>— Jessica M.</blockquote>
+<hr>
+<p><strong>Free shipping</strong> on orders over $75&nbsp;&nbsp;·&nbsp;&nbsp;<strong>Easy returns</strong> within 30 days&nbsp;&nbsp;·&nbsp;&nbsp;<strong>Sustainable</strong> materials&nbsp;&nbsp;·&nbsp;&nbsp;<strong>Secure checkout</strong></p>
+<p><strong>Verde Home</strong> — be the first to know about new arrivals and exclusive offers. <a href="#">Sign up →</a></p>
+<p>123 Greenway Ave, Portland, OR 97201&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#">Unsubscribe</a></p>`,
+  },
   {
     key: "classic-editorial", name: "Classic Editorial", subject: "Inside the City's Most Stylish Spaces", tags: ["editorial", "design"],
     html: `<h1>The Nordiske — Issue 01</h1>
@@ -450,7 +482,7 @@ function TemplateEditor({ id, seed, onClose, onSaved }: { id: number | null; see
   const [editorDoc, setEditorDoc] = useState<unknown>(null);
   const [thumbnail, setThumbnail] = useState<string>("");
   const [tags, setTags] = useState<string[]>(seed?.tags ?? []);
-  const [style, setStyle] = useState<StyleSettings>(DEFAULT_STYLE);
+  const [style, setStyle] = useState<StyleSettings>({ ...DEFAULT_STYLE, ...(seed?.style ?? {}) });
   const [tab, setTab] = useState<"write" | "style">("write");
   const [tagInput, setTagInput] = useState("");
   const [loading, setLoading] = useState(!!id);
