@@ -15,7 +15,10 @@ export type EmailStyle = {
   fontFamily: string;
   textColor: string;
   accent: string;
+  /** The email body card the content sits on. */
   background: string;
+  /** The page area around the body card. */
+  pageBackground: string;
   contentWidth: number;
 };
 
@@ -106,11 +109,12 @@ export function renderEmailHtml(html: string, style: EmailStyle): string {
   const parsed = new DOMParser().parseFromString(`<!doctype html><body>${html}</body>`, "text/html");
   const width = Math.min(Math.max(Math.round(style.contentWidth || 640), 480), 700);
   const body = Array.from(parsed.body.childNodes).map((n) => block(n, style, width)).filter(Boolean).join("\n");
+  const page = style.pageBackground || style.background;
   return `${SENTINEL}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0;padding:0;width:100%;background:${style.background};">
-<tr><td align="center" style="padding:28px 14px;background:${style.background};">
-<table role="presentation" width="${width}" cellpadding="0" cellspacing="0" border="0" style="width:${width}px;max-width:100%;">
-<tr><td style="font-family:${style.fontFamily};color:${style.textColor};font-size:16px;line-height:1.7;text-align:left;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0;padding:0;width:100%;background:${page};">
+<tr><td align="center" style="padding:28px 14px;background:${page};">
+<table role="presentation" width="${width}" cellpadding="0" cellspacing="0" border="0" style="width:${width}px;max-width:100%;background:${style.background};border-radius:12px;">
+<tr><td style="padding:36px 34px;font-family:${style.fontFamily};color:${style.textColor};font-size:16px;line-height:1.7;text-align:left;">
 ${body}
 </td></tr>
 </table>

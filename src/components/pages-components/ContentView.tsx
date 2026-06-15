@@ -236,8 +236,8 @@ function TemplateCard({ t, detail, onOpen, onRename, onDuplicate, onDelete }: { 
   );
 }
 
-type StyleSettings = { fontFamily: string; textColor: string; accent: string; background: string; contentWidth: number };
-const DEFAULT_STYLE: StyleSettings = { fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif", textColor: "#1a2231", accent: "#2563eb", background: "#ffffff", contentWidth: 680 };
+type StyleSettings = { fontFamily: string; textColor: string; accent: string; background: string; pageBackground: string; contentWidth: number };
+const DEFAULT_STYLE: StyleSettings = { fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif", textColor: "#1a2231", accent: "#2563eb", background: "#ffffff", pageBackground: "#f1f5f9", contentWidth: 680 };
 
 /** Beehiiv-style email-size gauge (warns near Gmail's ~102KB clip limit). */
 function SizeGauge({ pct, kb }: { pct: number; kb: number }) {
@@ -265,7 +265,7 @@ const img = (id: string) => `https://images.unsplash.com/photo-${id}?auto=format
 const QUICK_STARTS: QuickStart[] = [
   {
     key: "verde-home-retail", name: "Verde Home — Retail", subject: "Elevate the Everyday — New from Verde Home", tags: ["retail", "ecommerce"],
-    style: { fontFamily: "Georgia, 'Times New Roman', serif", textColor: "#2b2b2b", accent: "#1f4938", background: "#faf8f3", contentWidth: 680 },
+    style: { fontFamily: "Georgia, 'Times New Roman', serif", textColor: "#2b2b2b", accent: "#1f4938", background: "#faf8f3", pageBackground: "#e7e2d8", contentWidth: 680 },
     html: `<p><em>Free shipping on orders over $75</em></p>
 <h1>Elevate the Everyday</h1>
 <p>Timeless pieces for a home you love.</p>
@@ -474,15 +474,18 @@ function StylePanel({ value, onChange }: { value: StyleSettings; onChange: (s: S
         </StyleRow>
         <StyleRow label="Text color"><ColorField value={value.textColor} onChange={(c) => set({ textColor: c })} /></StyleRow>
         <StyleRow label="Accent / links"><ColorField value={value.accent} onChange={(c) => set({ accent: c })} /></StyleRow>
-        <StyleRow label="Background"><ColorField value={value.background} onChange={(c) => set({ background: c })} /></StyleRow>
+        <StyleRow label="Email body"><ColorField value={value.background} onChange={(c) => set({ background: c })} /></StyleRow>
+        <StyleRow label="Page background"><ColorField value={value.pageBackground} onChange={(c) => set({ pageBackground: c })} /></StyleRow>
         <StyleRow label={`Content width — ${value.contentWidth}px`}>
           <input type="range" min={480} max={820} step={20} value={value.contentWidth} onChange={(e) => set({ contentWidth: Number(e.target.value) })} style={{ width: 150 }} />
         </StyleRow>
       </div>
-      <div className="rounded-xl p-5 mt-4" style={{ background: value.background, border: "1px solid var(--border)", fontFamily: value.fontFamily, color: value.textColor }}>
-        <p style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8", marginBottom: 8, letterSpacing: "0.05em" }}>PREVIEW</p>
-        <h3 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 6px", letterSpacing: "-0.01em" }}>Your subject headline</h3>
-        <p style={{ fontSize: 14.5, lineHeight: 1.65, margin: 0 }}>This is how your email body reads. <span style={{ color: value.accent, textDecoration: "underline" }}>Links use the accent color.</span></p>
+      <div className="rounded-xl mt-4" style={{ background: value.pageBackground, border: "1px solid var(--border)", padding: 18 }}>
+        <p style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8", marginBottom: 10, letterSpacing: "0.05em" }}>PREVIEW</p>
+        <div style={{ background: value.background, borderRadius: 10, padding: 20, fontFamily: value.fontFamily, color: value.textColor, boxShadow: "0 1px 3px rgba(15,23,42,0.10)" }}>
+          <h3 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 6px", letterSpacing: "-0.01em" }}>Your subject headline</h3>
+          <p style={{ fontSize: 14.5, lineHeight: 1.65, margin: 0 }}>This is how your email body reads. <span style={{ color: value.accent, textDecoration: "underline" }}>Links use the accent color.</span></p>
+        </div>
       </div>
     </div>
   );
@@ -597,13 +600,13 @@ function TemplateEditor({ id, seed, onClose, onSaved }: { id: number | null; see
       </div>
 
       {/* Canvas */}
-      <div className="flex-1 overflow-y-auto" style={{ background: tab === "write" ? style.background : "#F8FAFC" }}>
+      <div className="flex-1 overflow-y-auto" style={{ background: tab === "write" ? style.pageBackground : "#F8FAFC" }}>
         {loading ? (
           <p style={{ fontSize: 13, color: "#94A3B8", padding: 40, textAlign: "center" }}>Loading…</p>
         ) : tab === "style" ? (
           <StylePanel value={style} onChange={setStyle} />
         ) : (
-          <div className="mx-auto px-5" style={{ maxWidth: style.contentWidth, paddingTop: 32, color: style.textColor, fontFamily: style.fontFamily }}>
+          <div className="mx-auto" style={{ maxWidth: style.contentWidth, width: "100%", margin: "28px auto 56px", padding: "36px 34px 72px", borderRadius: 14, background: style.background, boxShadow: "0 1px 2px rgba(15,23,42,0.06), 0 12px 36px rgba(15,23,42,0.06)", color: style.textColor, fontFamily: style.fontFamily }}>
             <div className="flex items-center gap-4 mb-4 flex-wrap">
               {!thumbnail && (
                 <button onClick={() => thumbRef.current?.click()} className="flex items-center gap-1.5" style={{ fontSize: 13, color: "#94A3B8", background: "transparent", border: "none", cursor: "pointer", fontFamily: font }}><ImageIcon size={14} /> Add thumbnail</button>
