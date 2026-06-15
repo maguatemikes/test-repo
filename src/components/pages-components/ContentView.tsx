@@ -595,7 +595,7 @@ function TemplateEditor({ id, seed, onClose, onSaved }: { id: number | null; see
           <SizeGauge pct={sizePct} kb={sizeBytes / 1024} />
           <span className="hidden md:inline" style={{ fontSize: 12, color: "#94A3B8", fontVariantNumeric: "tabular-nums" }}>{wordCount} words</span>
           <button onClick={onClose} disabled={busy} style={{ fontSize: 13, fontWeight: 500, color: "#64748B", background: "transparent", border: "none", padding: "7px 12px", cursor: "pointer" }}>Cancel</button>
-          <button onClick={save} disabled={busy || loading} style={{ fontSize: 13, fontWeight: 500, color: "#FFFFFF", background: "#0F172A", border: "none", padding: "7px 18px", borderRadius: 8, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>{busy ? "Saving…" : id != null ? "Save" : "Create"}</button>
+          <button onClick={save} disabled={busy || loading} style={{ fontSize: 13, fontWeight: 500, color: "#FFFFFF", background: "#0F172A", border: "none", padding: "7px 18px", borderRadius: 8, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>{busy ? "Saving…" : id != null ? "Save" : seed ? "Use template" : "Create"}</button>
         </div>
       </div>
 
