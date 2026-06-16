@@ -66,6 +66,10 @@ function normalize(payload: unknown): CurrentUser | null {
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
+  // True ONLY when /api/me explicitly says "not signed in" (401/403). A 200 we
+  // can't parse, a 5xx, or a network error are "couldn't determine" — we must
+  // not evict a logged-in user from the dashboard on those.
+  const [anonymous, setAnonymous] = useState(false);
   const router = useRouter();
 
   const refresh = useCallback(async () => {
@@ -75,11 +79,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (res.ok) {
         const data = await res.json().catch(() => null);
         setUser(normalize(data));
+        setAnonymous(false);
       } else {
         setUser(null);
+        setAnonymous(res.status === 401 || res.status === 403);
       }
     } catch {
       setUser(null);
+      setAnonymous(false);
     } finally {
       setLoading(false);
     }
@@ -89,18 +96,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     refresh();
   }, [refresh]);
 
-  // Route guard: once the session check resolves, send anonymous users to
-  // /login. Only mounted on dashboard routes (see AppShell standalone check),
-  // so it never fires on a public/auth page and cannot loop.
+  // Route guard: redirect to /login ONLY when the session check explicitly says
+  // the visitor is not signed in. We rely on the backend's 401/403 for the gate
+  // rather than inferring it from a missing/unparseable user, so a freshly
+  // logged-in user is never bounced off the dashboard by a flaky or
+  // not-yet-aligned /api/me response. Only mounted on dashboard routes (see
+  // AppShell standalone check), so it never fires on a public/auth page.
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && anonymous) {
       router.replace("/login");
     }
-  }, [loading, user, router]);
+  }, [loading, anonymous, router]);
 
-  // Don't render protected content once we know there's no session — the
+  // Don't render protected content once we know the visitor is anonymous — the
   // effect above is redirecting.
-  if (!loading && !user) return null;
+  if (!loading && anonymous) return null;
 
   return (
     <SessionContext.Provider value={{ user, loading, refresh }}>

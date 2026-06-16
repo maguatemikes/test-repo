@@ -48,7 +48,10 @@ export async function POST(req: Request) {
   if (upstream.ok) {
     const res = NextResponse.json({ ok: true });
     relaySessionCookie(upstream, res);
-    res.cookies.set(CHALLENGE_COOKIE, "", { path: "/", maxAge: 0 }); // clear
+    // Clear the challenge cookie by APPENDING a Set-Cookie header rather than
+    // res.cookies.set(), which would re-serialize and clobber the relayed
+    // session cookie(s) above.
+    res.headers.append("set-cookie", `${CHALLENGE_COOKIE}=; Path=/; Max-Age=0`);
     return res;
   }
   return fail("invalid", "That code is incorrect. Please try again.", 401);

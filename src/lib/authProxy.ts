@@ -53,8 +53,19 @@ export async function callNetx(
 
 /** Copy any Set-Cookie the backend issued onto our response (session login). */
 export function relaySessionCookie(from: Response, to: NextResponse) {
-  const cookie = from.headers.get("set-cookie");
-  if (cookie) to.headers.set("set-cookie", cookie);
+  // The backend can emit MULTIPLE Set-Cookie headers (e.g. the new session +
+  // clearing the 2FA pending cookie on verify). headers.get("set-cookie")
+  // collapses them into one comma-joined string the browser can't parse, which
+  // silently drops the session cookie. getSetCookie() keeps each one separate;
+  // append (not set) so we don't overwrite cookies already on the response.
+  const h = from.headers as Headers & { getSetCookie?: () => string[] };
+  const setCookies =
+    typeof h.getSetCookie === "function"
+      ? h.getSetCookie()
+      : from.headers.get("set-cookie")
+        ? [from.headers.get("set-cookie") as string]
+        : [];
+  for (const c of setCookies) to.headers.append("set-cookie", c);
   return to;
 }
 
