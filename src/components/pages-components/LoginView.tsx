@@ -72,6 +72,13 @@ export function LoginView() {
       }
 
       const code = (data?.code ?? "server") as LoginErrorCode;
+      if (code === "unverified") {
+        // Unverified accounts go to the dedicated verify-email screen (which
+        // offers resend), rather than a dead-end banner on the login form.
+        // Carry the email so /verify can prefill and resend without re-asking.
+        router.push(`/verify?email=${encodeURIComponent(email.trim())}`);
+        return;
+      }
       setError({ code, message: data?.error ?? FALLBACK_ERROR.message });
     } catch {
       setError(FALLBACK_ERROR);
