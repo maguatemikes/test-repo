@@ -3,11 +3,40 @@
 import {
   Building2, Users, CreditCard, Plug, Mail, Key, Webhook, FileText,
   AlertCircle, Plus, Trash2, Copy, CheckCircle2, ShieldCheck,
+  UserMinus, Clock, X,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useCurrentUser } from "@/components/SessionProvider";
 
 const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
+
+// Fixed role ENUM — mirrors crm_organization_members.role in the DB.
+const ROLE_OPTIONS = [
+  { value: "super_admin", label: "Super Admin" },
+  { value: "admin", label: "Admin" },
+  { value: "marketing_manager", label: "Marketing Manager" },
+  { value: "analyst", label: "Analyst" },
+  { value: "read_only", label: "Read Only" },
+] as const;
+const roleLabel = (r: unknown) => ROLE_OPTIONS.find((o) => o.value === String(r))?.label ?? str(r);
+const roleBadgeColors = (r: unknown): { bg: string; fg: string } => {
+  switch (String(r)) {
+    case "super_admin": return { bg: "#F3E8FF", fg: "#7C3AED" };
+    case "admin": return { bg: "#EFF6FF", fg: "#2563EB" };
+    case "marketing_manager": return { bg: "#ECFDF5", fg: "#059669" };
+    case "analyst": return { bg: "#FEF3C7", fg: "#D97706" };
+    default: return { bg: "#F1F5F9", fg: "#64748B" };
+  }
+};
+
+// Common IANA zones for the org timezone picker (passed through to crm-api).
+const TIMEZONES = [
+  "UTC", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+  "America/Phoenix", "America/Anchorage", "Pacific/Honolulu", "Europe/London", "Europe/Paris",
+  "Europe/Berlin", "Europe/Madrid", "Europe/Moscow", "Asia/Dubai", "Asia/Kolkata",
+  "Asia/Singapore", "Asia/Tokyo", "Asia/Shanghai", "Australia/Sydney",
+];
 
 const settingsTabs = [
   { id: "org", label: "Organization", icon: Building2 },
@@ -20,11 +49,6 @@ const settingsTabs = [
   { id: "audit", label: "Audit Log", icon: FileText },
 ];
 
-const teamMembers = [
-  { name: "Ryan Nguyen", email: "ryan@acmecorp.io", role: "Super Admin", avatar: "RN", joined: "Jan 2026" },
-  { name: "Priya Nair", email: "priya@acmecorp.io", role: "Admin", avatar: "PN", joined: "Feb 2026" },
-];
-
 // Case-insensitive field accessor (API mixes PascalCase + camelCase).
 const get = (o: Record<string, unknown> | null | undefined, key: string): unknown => {
   if (!o) return undefined;
@@ -34,11 +58,21 @@ const get = (o: Record<string, unknown> | null | undefined, key: string): unknow
 const str = (v: unknown, fallback = "—") => (v == null || v === "" ? fallback : String(v));
 const normList = (d: unknown): Record<string, unknown>[] => (Array.isArray(d) ? d : ((d as { rows?: unknown[] })?.rows ?? []) as Record<string, unknown>[]);
 const fmtDate = (v: unknown) => { const s = str(v, ""); if (!s) return "—"; const d = new Date(s); return isNaN(+d) ? s : d.toLocaleDateString(); };
+const initials = (name: string, email: string) => {
+  const base = (name || email || "?").trim();
+  const parts = base.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return base.slice(0, 2).toUpperCase();
+};
 
 export function SettingsView() {
   const [activeTab, setActiveTab] = useState("org");
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const showSave = (label = "Changes saved") => { setSaveToast(label); setTimeout(() => setSaveToast(null), 2500); };
+
+  // Current user — owner-only mutations are gated on super_admin.
+  const { user: currentUser } = useCurrentUser();
+  const isOwner = currentUser?.role === "super_admin";
 
   // ── Invite teammate (already wired → crm-api) ──
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -54,7 +88,7 @@ export function SettingsView() {
     try {
       const res = await fetch("/api/team/invites", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, role: inviteRole }) });
       const d = await res.json();
-      if (d.ok) { setInviteOpen(false); setInviteEmail(""); showSave(`Invite sent to ${email}`); }
+      if (d.ok) { setInviteOpen(false); setInviteEmail(""); showSave(`Invite sent to ${email}`); loadMembers(); }
       else setInviteError(d.error || "Failed to send invite.");
     } catch { setInviteError("Could not send invite."); }
     finally { setInviteBusy(false); }
@@ -64,12 +98,59 @@ export function SettingsView() {
   const [org, setOrg] = useState<Record<string, unknown> | null>(null);
   const [orgName, setOrgName] = useState("");
   const [orgBilling, setOrgBilling] = useState("");
+  const [orgTz, setOrgTz] = useState("UTC");
   const [orgBusy, setOrgBusy] = useState(false);
   const saveOrg = async () => {
     setOrgBusy(true);
-    const res = await fetch("/api/settings/org", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: orgName, billingEmail: orgBilling }) });
+    const res = await fetch("/api/settings/org", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: orgName, billingEmail: orgBilling, timeZone: orgTz }) });
     setOrgBusy(false);
     if (res.ok) showSave("Organization updated"); else showSave("Failed to save");
+  };
+
+  // ── Members & invites (Users & Roles tab) ──
+  const [members, setMembers] = useState<Record<string, unknown>[]>([]);
+  const [invites, setInvites] = useState<Record<string, unknown>[]>([]);
+  const [memberBusy, setMemberBusy] = useState<string | null>(null); // id currently mutating
+  const memberId = (m: Record<string, unknown>) => str(get(m, "userId") ?? get(m, "id") ?? get(m, "user_id"), "");
+
+  const loadMembers = useCallback(async () => {
+    const [m, inv] = await Promise.all([
+      fetch("/api/me/org/members").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      fetch("/api/team/invites").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ]);
+    setMembers(normList(m));
+    setInvites(normList(inv));
+  }, []);
+
+  const changeRole = async (m: Record<string, unknown>, role: string) => {
+    const id = memberId(m);
+    if (!id || role === str(get(m, "role"), "")) return;
+    setMemberBusy(id);
+    const res = await fetch(`/api/me/org/members/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role }) });
+    setMemberBusy(null);
+    if (res.ok) { showSave(`Role updated to ${roleLabel(role)}`); loadMembers(); }
+    else { const d = await res.json().catch(() => ({})); showSave(d.error || "Failed to update role"); }
+  };
+
+  const removeMember = async (m: Record<string, unknown>) => {
+    const id = memberId(m);
+    const who = str(get(m, "name") ?? get(m, "displayName") ?? get(m, "email"), "this member");
+    if (!id || !confirm(`Remove ${who} from the organization? They will lose access immediately.`)) return;
+    setMemberBusy(id);
+    const res = await fetch(`/api/me/org/members/${id}`, { method: "DELETE" });
+    setMemberBusy(null);
+    if (res.ok) { showSave("Member removed"); loadMembers(); }
+    else { const d = await res.json().catch(() => ({})); showSave(d.error || "Failed to remove member"); }
+  };
+
+  const revokeInvite = async (inv: Record<string, unknown>) => {
+    const id = str(get(inv, "id") ?? get(inv, "inviteId"), "");
+    if (!id || !confirm("Revoke this pending invite?")) return;
+    setMemberBusy(id);
+    const res = await fetch(`/api/team/invites/${id}`, { method: "DELETE" });
+    setMemberBusy(null);
+    if (res.ok) { showSave("Invite revoked"); loadMembers(); }
+    else { const d = await res.json().catch(() => ({})); showSave(d.error || "Failed to revoke invite"); }
   };
 
   // ── Generic resource lists ──
@@ -101,7 +182,13 @@ export function SettingsView() {
       setLoading(true);
       const d = await fetch("/api/settings/org").then((r) => (r.ok ? r.json() : null)).catch(() => null);
       setLoading(false);
-      if (d) { setOrg(d); setOrgName(str(get(d, "name"), "")); setOrgBilling(str(get(d, "billingEmail"), "")); }
+      if (d) { setOrg(d); setOrgName(str(get(d, "name"), "")); setOrgBilling(str(get(d, "billingEmail"), "")); setOrgTz(str(get(d, "timeZone") ?? get(d, "timezone"), "UTC")); }
+      return;
+    }
+    if (tab === "users") {
+      setLoading(true);
+      await loadMembers();
+      setLoading(false);
       return;
     }
     const cfg = map[tab];
@@ -110,7 +197,7 @@ export function SettingsView() {
     const d = await fetch(`/api/settings/${cfg.path}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
     setLoading(false);
     cfg.set(normList(d));
-  }, []);
+  }, [loadMembers]);
 
   useEffect(() => { load(activeTab); }, [activeTab, load]);
 
@@ -232,6 +319,15 @@ export function SettingsView() {
                 <label style={{ fontSize: 12, fontWeight: 500, color: "#0F172A", display: "block", marginBottom: 5 }}>Billing Email</label>
                 <input value={orgBilling} onChange={(e) => setOrgBilling(e.target.value)} placeholder="billing@company.com" style={inputStyle} />
               </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 500, color: "#0F172A", display: "block", marginBottom: 5 }}>Timezone</label>
+                <select value={orgTz} onChange={(e) => setOrgTz(e.target.value)} style={{ ...inputStyle, background: "#FFFFFF" }}>
+                  {(TIMEZONES.includes(orgTz) ? TIMEZONES : [orgTz, ...TIMEZONES]).map((tz) => (
+                    <option key={tz} value={tz}>{tz}</option>
+                  ))}
+                </select>
+                <p style={{ fontSize: 11, color: "#94A3B8", marginTop: 4 }}>Used for scheduling and timestamps shown across the org.</p>
+              </div>
               <div className="flex gap-6">
                 <div><p style={{ fontSize: 11, color: "#94A3B8" }}>Slug</p><p style={{ fontSize: 13, color: "#0F172A", fontFamily: "monospace" }}>{str(get(org, "slug"))}</p></div>
                 <div><p style={{ fontSize: 11, color: "#94A3B8" }}>Status</p><span className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 600, background: "#F0FDF4", color: "#16A34A" }}>{str(get(org, "status")).toUpperCase()}</span></div>
@@ -245,21 +341,76 @@ export function SettingsView() {
           <div className="max-w-2xl space-y-6">
             <div className="flex items-center justify-between">
               <H t="Users & Roles" s="Manage team access and permissions" />
-              <button onClick={() => { setInviteError(null); setInviteOpen(true); }} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF", cursor: "pointer" }}>
-                <Plus size={13} /> Invite Teammate
-              </button>
+              {isOwner && (
+                <button onClick={() => { setInviteError(null); setInviteOpen(true); }} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF", cursor: "pointer" }}>
+                  <Plus size={13} /> Invite Teammate
+                </button>
+              )}
             </div>
+
+            {/* Active members */}
             <div className="rounded-xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
-              {teamMembers.map((m, i) => (
-                <div key={m.email} className="flex items-center gap-4 px-5 py-4" style={{ borderBottom: i < teamMembers.length - 1 ? "1px solid #F8FAFC" : "none" }}>
-                  <div className="rounded-full flex items-center justify-center text-white" style={{ width: 36, height: 36, background: `hsl(${m.email.charCodeAt(0) * 30}, 60%, 50%)`, fontSize: 12, fontWeight: 600 }}>{m.avatar}</div>
-                  <div className="flex-1"><p style={{ fontSize: 13, fontWeight: 500, color: "#0F172A" }}>{m.name}</p><p style={{ fontSize: 11, color: "#64748B" }}>{m.email}</p></div>
-                  <span className="rounded-full px-2 py-0.5" style={{ fontSize: 11, background: "#F1F5F9", color: "#64748B" }}>{m.role}</span>
-                  <span style={{ fontSize: 11, color: "#94A3B8" }}>since {m.joined}</span>
-                </div>
-              ))}
+              {loading ? <p style={{ fontSize: 12, color: "#94A3B8", padding: 20 }}>Loading…</p>
+                : members.length === 0 ? <EmptyState compact icon={Users} title="No members yet" description="Invite a teammate to get started." />
+                : members.map((m, i) => {
+                  const email = str(get(m, "email"), "");
+                  const name = str(get(m, "name") ?? get(m, "displayName"), email);
+                  const role = str(get(m, "role"), "read_only");
+                  const id = memberId(m);
+                  const isSelf = !!currentUser?.email && email.toLowerCase() === currentUser.email.toLowerCase();
+                  const busy = memberBusy === id;
+                  const badge = roleBadgeColors(role);
+                  return (
+                    <div key={id || email || i} className="flex items-center gap-4 px-5 py-4" style={{ borderBottom: i < members.length - 1 ? "1px solid #F8FAFC" : "none", opacity: busy ? 0.5 : 1 }}>
+                      <div className="rounded-full flex items-center justify-center text-white" style={{ width: 36, height: 36, background: `hsl(${(email.charCodeAt(0) || 65) * 30}, 60%, 50%)`, fontSize: 12, fontWeight: 600, flexShrink: 0 }}>{initials(name, email)}</div>
+                      <div className="flex-1 min-w-0">
+                        <p style={{ fontSize: 13, fontWeight: 500, color: "#0F172A" }}>{name}{isSelf && <span style={{ fontSize: 11, color: "#94A3B8", fontWeight: 400 }}> (you)</span>}</p>
+                        <p className="truncate" style={{ fontSize: 11, color: "#64748B" }}>{email}</p>
+                      </div>
+                      <span style={{ fontSize: 11, color: "#94A3B8", whiteSpace: "nowrap" }}>since {fmtDate(get(m, "joinedAt") ?? get(m, "joined_at") ?? get(m, "createdAt"))}</span>
+                      {isOwner && !isSelf ? (
+                        <select value={role} disabled={busy} onChange={(e) => changeRole(m, e.target.value)}
+                          style={{ fontSize: 11, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: 6, background: "#FFFFFF", color: "#0F172A", cursor: busy ? "not-allowed" : "pointer" }}>
+                          {ROLE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                      ) : (
+                        <span className="rounded-full px-2 py-0.5" style={{ fontSize: 11, fontWeight: 500, background: badge.bg, color: badge.fg, whiteSpace: "nowrap" }}>{roleLabel(role)}</span>
+                      )}
+                      {isOwner && !isSelf && (
+                        <button onClick={() => removeMember(m)} disabled={busy} title="Remove member" style={{ color: "#DC2626", cursor: busy ? "not-allowed" : "pointer" }}><UserMinus size={14} /></button>
+                      )}
+                    </div>
+                  );
+                })}
             </div>
-            <p style={{ fontSize: 11, color: "#94A3B8" }}>Team roster is read-only here for now; invites are sent through crm-api.</p>
+
+            {/* Pending invites */}
+            {invites.length > 0 && (
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 600, color: "#64748B", marginBottom: 8 }}>Pending invites</p>
+                <div className="rounded-xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
+                  {invites.map((inv, i) => {
+                    const email = str(get(inv, "email"));
+                    const role = str(get(inv, "role"), "");
+                    const id = str(get(inv, "id") ?? get(inv, "inviteId"), "");
+                    const busy = memberBusy === id;
+                    return (
+                      <div key={id || email || i} className="flex items-center gap-4 px-5 py-3.5" style={{ borderBottom: i < invites.length - 1 ? "1px solid #F8FAFC" : "none", opacity: busy ? 0.5 : 1 }}>
+                        <Clock size={15} color="#D97706" style={{ flexShrink: 0 }} />
+                        <div className="flex-1 min-w-0"><p className="truncate" style={{ fontSize: 13, fontWeight: 500, color: "#0F172A" }}>{email}</p>
+                          <p style={{ fontSize: 11, color: "#94A3B8" }}>Invited {fmtDate(get(inv, "createdAt") ?? get(inv, "invitedAt"))}{get(inv, "expiresAt") ? ` · expires ${fmtDate(get(inv, "expiresAt"))}` : ""}</p></div>
+                        {role && <span className="rounded-full px-2 py-0.5" style={{ fontSize: 11, background: "#FFFBEB", color: "#D97706", whiteSpace: "nowrap" }}>{roleLabel(role)}</span>}
+                        {isOwner && id && (
+                          <button onClick={() => revokeInvite(inv)} disabled={busy} title="Revoke invite" style={{ color: "#DC2626", cursor: busy ? "not-allowed" : "pointer" }}><X size={15} /></button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {!isOwner && <p style={{ fontSize: 11, color: "#94A3B8" }}>Only organization owners (Super Admin) can invite, change roles, or remove members.</p>}
           </div>
         )}
 
