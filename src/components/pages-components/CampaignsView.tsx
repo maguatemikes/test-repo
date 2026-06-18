@@ -2,10 +2,11 @@
 
 import {
   Send, Clock, Edit3, Plus, ChevronRight, ChevronLeft, X, Eye, Users,
-  ArrowUpRight, MousePointerClick, TrendingDown, DollarSign, Trash2, LayoutTemplate, Pause,
+  ArrowUpRight, MousePointerClick, TrendingDown, DollarSign, Trash2, LayoutTemplate, Pause, Loader2,
 } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   listCampaigns, getCampaign, getAnalytics, createCampaign, updateCampaign, deleteCampaign,
   testCampaign, sendCampaign, listAudiences, rates, type Campaign, type CampaignInput, type AudienceOption,
@@ -102,7 +103,7 @@ export function CampaignsView() {
                       <p className="truncate" style={{ fontSize: 11, color: "#64748B", maxWidth: 280 }}>{c.subject || "No subject"}</p>
                     </td>
                     <td style={{ padding: "10px 14px" }}>
-                      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, background: s.bg, color: s.color }}><SIcon size={10} />{s.label}</span>
+                      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, background: s.bg, color: s.color }}>{c.status === "sending" ? <Loader2 size={10} className="animate-spin" /> : <SIcon size={10} />}{s.label}</span>
                     </td>
                     <td style={{ padding: "10px 14px", fontSize: 12, color: "#0F172A", fontFamily: "JetBrains Mono, monospace" }}>{c.recipientCount ? num(c.recipientCount) : "—"}</td>
                     <td style={{ padding: "10px 14px", fontSize: 12, color: "#64748B" }}>{isSent ? pct1(r.openRate) : "—"}</td>
@@ -128,15 +129,18 @@ function Composer({ campaignId, onCancel, onDone }: { campaignId: number | null;
   const [id, setId] = useState<number | null>(campaignId);
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState<CampaignInput>({ name: "", subject: "", preheader: "", fromName: "", fromEmail: "", targetListId: null, targetSegmentId: null, excludeSegmentId: null, templateId: null });
+  const [form, setForm] = useState<CampaignInput>({ name: "", subject: "", preheader: "", fromName: "", fromEmail: "no-reply@crm.netx.cc", targetListId: null, targetSegmentId: null, excludeSegmentId: null, templateId: null });
   const [audiences, setAudiences] = useState<AudienceOption[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [confirmSend, setConfirmSend] = useState(false);
+  const [pendingSendId, setPendingSendId] = useState<number | null>(null);
+  const [sendErr, setSendErr] = useState("");
   const set = (patch: Partial<CampaignInput>) => setForm((f) => ({ ...f, ...patch }));
 
   useEffect(() => { listAudiences().then(setAudiences); listTemplates().then(setTemplates); }, []);
   useEffect(() => {
     if (campaignId == null) return;
-    getCampaign(campaignId).then((c) => { if (c) setForm({ name: c.name, subject: c.subject ?? "", preheader: c.preheader ?? "", fromName: c.fromName ?? "", fromEmail: c.fromEmail ?? "", replyTo: c.replyTo ?? "", targetListId: c.targetListId, targetSegmentId: c.targetSegmentId, excludeSegmentId: c.excludeSegmentId, templateId: c.templateId }); });
+    getCampaign(campaignId).then((c) => { if (c) setForm({ name: c.name, subject: c.subject ?? "", preheader: c.preheader ?? "", fromName: c.fromName ?? "", fromEmail: c.fromEmail || "no-reply@crm.netx.cc", replyTo: c.replyTo ?? "", targetListId: c.targetListId, targetSegmentId: c.targetSegmentId, excludeSegmentId: c.excludeSegmentId, templateId: c.templateId }); });
   }, [campaignId]);
 
   // Ensure a draft exists, then persist the current form.
@@ -157,14 +161,13 @@ function Composer({ campaignId, onCancel, onDone }: { campaignId: number | null;
 
   const next = async () => { if (await save()) setStep((s) => Math.min(4, s + 1)); };
   const saveDraftExit = async () => { if (await save()) onDone(); };
-  const doSend = async () => {
-    const cid = await save();
-    if (!cid) return;
-    if (!confirm("Send this campaign now?")) return;
+  const requestSend = async () => { const cid = await save(); if (cid == null) return; setPendingSendId(cid); setSendErr(""); setConfirmSend(true); };
+  const confirmedSend = async () => {
+    if (pendingSendId == null) return;
     setBusy(true);
-    const ok = await sendCampaign(cid, null);
+    const ok = await sendCampaign(pendingSendId, null);
     setBusy(false);
-    if (ok) onDone(); else alert("Send failed.");
+    if (ok) { setConfirmSend(false); onDone(); } else setSendErr("Send failed. Please try again.");
   };
 
   const selectedTpl = templates.find((t) => t.id === form.templateId) || null;
@@ -173,11 +176,21 @@ function Composer({ campaignId, onCancel, onDone }: { campaignId: number | null;
 
   return (
     <div className="p-6" style={{ fontFamily: font }}>
+      <ConfirmDialog
+        open={confirmSend}
+        title="Send this campaign now?"
+        message={`“${form.name || "This campaign"}” will be sent to its target audience. This can’t be undone.`}
+        confirmLabel="Send now"
+        busy={busy}
+        onConfirm={confirmedSend}
+        onCancel={() => setConfirmSend(false)}
+      />
       <div className="flex items-center gap-2 mb-6">
         <button onClick={onCancel} className="flex items-center gap-1" style={{ fontSize: 12, color: "#2563EB", cursor: "pointer" }}><ChevronLeft size={13} /> Campaigns</button>
         <ChevronRight size={12} color="#94A3B8" />
         <span style={{ fontSize: 12, color: "#64748B" }}>{campaignId ? "Edit Campaign" : "New Campaign"}</span>
       </div>
+      {sendErr && <div style={{ background: "#FEF2F2", color: "#DC2626", fontSize: 12, padding: "8px 12px", borderRadius: 8, border: "1px solid #FECACA", marginBottom: 12 }}>{sendErr}</div>}
 
       <div className="flex items-center mb-8 rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", width: "fit-content" }}>
         {STEPS.map((s, idx) => {
@@ -293,7 +306,7 @@ function Composer({ campaignId, onCancel, onDone }: { campaignId: number | null;
           <button onClick={saveDraftExit} disabled={busy} style={{ fontSize: 12, fontWeight: 500, color: "#2563EB", background: "#FFFFFF", border: "1px solid var(--border)", padding: "8px 16px", borderRadius: 6, cursor: "pointer", fontFamily: font }}>Save draft</button>
           {step < 4
             ? <button onClick={next} disabled={busy} style={{ fontSize: 12, fontWeight: 500, color: "#FFFFFF", background: "#2563EB", border: "none", padding: "8px 24px", borderRadius: 6, cursor: "pointer", fontFamily: font, opacity: busy ? 0.6 : 1 }}>{busy ? "Saving…" : "Save & Continue →"}</button>
-            : <button onClick={doSend} disabled={busy} style={{ fontSize: 12, fontWeight: 500, color: "#FFFFFF", background: "#16A34A", border: "none", padding: "8px 24px", borderRadius: 6, cursor: "pointer", fontFamily: font, opacity: busy ? 0.6 : 1 }}>{busy ? "Sending…" : "🚀 Send Campaign"}</button>}
+            : <button onClick={requestSend} disabled={busy} style={{ fontSize: 12, fontWeight: 500, color: "#FFFFFF", background: "#16A34A", border: "none", padding: "8px 24px", borderRadius: 6, cursor: "pointer", fontFamily: font, opacity: busy ? 0.6 : 1 }}>{busy ? "Sending…" : "🚀 Send Campaign"}</button>}
         </div>
       </div>
     </div>
@@ -317,9 +330,29 @@ function Detail({ id, onBack, onEdit }: { id: number; onBack: () => void; onEdit
   const [loading, setLoading] = useState(true);
   const [testOpen, setTestOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [confirmKind, setConfirmKind] = useState<null | "send" | "delete">(null);
+  const [actionErr, setActionErr] = useState("");
 
   const load = useCallback(async () => { setLoading(true); const [cc, an] = await Promise.all([getCampaign(id), getAnalytics(id)]); setC(cc); setAnalytics(an); setLoading(false); }, [id]);
   useEffect(() => { load(); }, [load]);
+
+  // Silent re-fetch (no loading flash) — used for polling.
+  const refresh = useCallback(async () => { const [cc, an] = await Promise.all([getCampaign(id), getAnalytics(id)]); if (cc) setC(cc); setAnalytics(an); }, [id]);
+
+  // While a campaign is "sending", poll until it flips to a terminal status
+  // (sent/failed) so the UI updates without a manual refresh. Capped so a stuck
+  // send doesn't poll forever.
+  const pollCount = useRef(0);
+  useEffect(() => {
+    if (c?.status !== "sending") { pollCount.current = 0; return; }
+    pollCount.current = 0;
+    const t = setInterval(() => {
+      pollCount.current += 1;
+      if (pollCount.current > 40) { clearInterval(t); return; } // ~2.3 min safety cap
+      refresh();
+    }, 3500);
+    return () => clearInterval(t);
+  }, [c?.status, refresh]);
 
   if (loading) return <div className="p-6" style={{ fontFamily: font, fontSize: 13, color: "#94A3B8" }}>Loading campaign…</div>;
   if (!c) return <div className="p-6" style={{ fontFamily: font }}><EmptyState icon={Send} title="Campaign not found" description="It may have been deleted." action={<button onClick={onBack} className="rounded-lg px-4 py-2" style={{ fontSize: 12, background: "#2563EB", color: "#fff", cursor: "pointer" }}>Back</button>} /></div>;
@@ -334,12 +367,35 @@ function Detail({ id, onBack, onEdit }: { id: number; onBack: () => void; onEdit
     { label: "Revenue", value: money(c.revenue), icon: DollarSign, color: "#D97706", bg: "#FFF7ED" },
   ];
 
-  const onDelete = async () => { if (!confirm("Delete this campaign?")) return; setBusy(true); const ok = await deleteCampaign(id); setBusy(false); if (ok) onBack(); else alert("Delete failed."); };
-  const onSend = async () => { if (!confirm("Send this campaign now?")) return; setBusy(true); const ok = await sendCampaign(id, null); setBusy(false); if (ok) load(); else alert("Send failed."); };
+  const onDelete = () => { setActionErr(""); setConfirmKind("delete"); };
+  const onSend = () => { setActionErr(""); setConfirmKind("send"); };
+  const runConfirm = async () => {
+    setBusy(true); setActionErr("");
+    const ok = confirmKind === "send" ? await sendCampaign(id, null) : await deleteCampaign(id);
+    setBusy(false);
+    if (!ok) { setActionErr(confirmKind === "send" ? "Send failed. Please try again." : "Delete failed. Please try again."); return; }
+    const kind = confirmKind; setConfirmKind(null);
+    if (kind === "send") load(); else onBack();
+  };
 
   return (
     <div className="p-6 space-y-5" style={{ fontFamily: font }}>
       {testOpen && <SendTestDialog campaignId={id} onClose={() => setTestOpen(false)} />}
+      <ConfirmDialog
+        open={confirmKind !== null}
+        title={confirmKind === "delete" ? "Delete campaign?" : "Send this campaign now?"}
+        message={confirmKind === "delete"
+          ? `“${c.name}” will be permanently removed. This can’t be undone.`
+          : c.recipientCount > 0
+            ? `“${c.name}” will be sent to its audience (${num(c.recipientCount)} recipient${c.recipientCount === 1 ? "" : "s"}). This can’t be undone.`
+            : `“${c.name}” will be sent to its target audience. This can’t be undone.`}
+        confirmLabel={confirmKind === "delete" ? "Delete" : "Send now"}
+        danger={confirmKind === "delete"}
+        busy={busy}
+        onConfirm={runConfirm}
+        onCancel={() => { setConfirmKind(null); setActionErr(""); }}
+      />
+      {actionErr && <div style={{ background: "#FEF2F2", color: "#DC2626", fontSize: 12, padding: "8px 12px", borderRadius: 8, border: "1px solid #FECACA" }}>{actionErr}</div>}
 
       <div className="flex items-center gap-2">
         <button onClick={onBack} className="flex items-center gap-1" style={{ fontSize: 12, color: "#2563EB", cursor: "pointer" }}><ChevronLeft size={13} /> Campaigns</button>
@@ -350,7 +406,7 @@ function Detail({ id, onBack, onEdit }: { id: number; onBack: () => void; onEdit
       <div className="rounded-xl p-5" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
-            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, background: s.bg, color: s.color }}><Icon size={10} />{s.label}</span>
+            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, background: s.bg, color: s.color }}>{c.status === "sending" ? <Loader2 size={10} className="animate-spin" /> : <Icon size={10} />}{s.label}</span>
             <h2 style={{ fontSize: 16, fontWeight: 600, color: "#0F172A", marginTop: 6 }}>{c.name}</h2>
             <p style={{ fontSize: 12, color: "#64748B", marginTop: 3 }}>Subject: {c.subject || "—"}</p>
             <p style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>{c.sentAt ? `Sent ${fmtDate(c.sentAt)}` : c.scheduledFor ? `Scheduled for ${fmtDate(c.scheduledFor)}` : "Draft — not sent"}</p>
