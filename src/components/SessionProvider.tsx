@@ -15,6 +15,7 @@ export interface CurrentUser {
   email: string;
   role?: string;
   avatarUrl?: string;
+  org?: { id?: number; slug?: string; name?: string; status?: string };
 }
 
 interface SessionContextValue {
@@ -55,11 +56,16 @@ function normalize(payload: unknown): CurrentUser | null {
   const email = (u.email as string) ?? "";
   if (!name && !email) return null;
 
+  const orgRaw = wrapper.org && typeof wrapper.org === "object" ? (wrapper.org as Record<string, unknown>) : null;
+
   return {
     name: name || email,
     email,
     role: (wrapper.role as string) ?? (u.role as string) ?? (u.roleName as string) ?? undefined,
     avatarUrl: (u.avatarUrl as string) ?? (u.avatar as string) ?? undefined,
+    org: orgRaw
+      ? { id: orgRaw.id as number, slug: orgRaw.slug as string, name: orgRaw.name as string, status: orgRaw.status as string }
+      : undefined,
   };
 }
 
