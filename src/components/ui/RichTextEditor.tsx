@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { useEditor, EditorContent, BubbleMenu, type Editor } from "@tiptap/react";
 import type { Content } from "@tiptap/core";
+import type { EditorView } from "@tiptap/pm/view";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -13,6 +14,65 @@ import AutoJoiner from "tiptap-extension-auto-joiner";
 import { Bold, Italic, Strikethrough, Heading1, Heading2, Heading3, List, ListOrdered, Quote, Minus, Link2, ImageIcon, Undo2, Redo2 } from "lucide-react";
 
 const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
+
+// ---- Image uploads (→ /api/uploads proxy → crm-api → cdn.netx.cc) ----
+// We no longer embed base64 (Gmail strips it). Files upload to the CDN and the
+// editor stores the returned hosted URL, so "what you see = what sends".
+const UPLOAD_ERRORS: Record<string, string> = {
+  unauthorized: "Your session expired — please sign in again, then retry.",
+  file_too_large: "That image is over the 5MB limit.",
+  unsupported_type: "Unsupported file type. Use JPEG, PNG, WebP, or GIF.",
+  invalid_image: "That file isn't a valid image.",
+  rate_limited: "Too many uploads — wait a moment and try again.",
+};
+
+async function uploadImage(file: File): Promise<string> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch("/api/uploads", { method: "POST", body: fd, credentials: "include" });
+  const data = await res.json().catch(() => ({}) as Record<string, unknown>);
+  if (!res.ok) {
+    // crm-api error envelope: { code, message }
+    const err = data as { code?: string; message?: string };
+    throw new Error(UPLOAD_ERRORS[err?.code ?? ""] || err?.message || "Image upload failed. Please try again.");
+  }
+  const d = data as Record<string, unknown>;
+  const url = (d.url ?? d.Url ?? d.cdnUrl ?? d.location) as string | undefined;
+  if (!url) throw new Error("Upload succeeded but no URL was returned.");
+  return url;
+}
+
+function findImagePos(view: EditorView, src: string): number | null {
+  let pos: number | null = null;
+  view.state.doc.descendants((node, p) => {
+    if (pos === null && node.type.name === "image" && node.attrs.src === src) pos = p;
+  });
+  return pos;
+}
+
+/** Insert a local preview immediately, upload, then swap to the hosted URL. */
+function placeAndUpload(view: EditorView, file: File, pos?: number) {
+  if (!file.type.startsWith("image/")) return;
+  const tempSrc = URL.createObjectURL(file);
+  const at = pos ?? view.state.selection.from;
+  view.dispatch(view.state.tr.insert(at, view.state.schema.nodes.image.create({ src: tempSrc })));
+  uploadImage(file)
+    .then((url) => {
+      const p = findImagePos(view, tempSrc);
+      if (p === null) return;
+      const node = view.state.doc.nodeAt(p);
+      if (node) view.dispatch(view.state.tr.setNodeMarkup(p, undefined, { ...node.attrs, src: url }));
+    })
+    .catch((e: unknown) => {
+      const p = findImagePos(view, tempSrc);
+      if (p !== null) {
+        const node = view.state.doc.nodeAt(p);
+        if (node) view.dispatch(view.state.tr.delete(p, p + node.nodeSize));
+      }
+      window.alert((e as Error).message);
+    })
+    .finally(() => URL.revokeObjectURL(tempSrc));
+}
 
 /** TipTap block editor — Beehiiv-style writing experience. Emits HTML + JSON. */
 export function RichTextEditor({ value, doc, accent, onChange, placeholder = "Write your email…", bare = false }: {
@@ -39,9 +99,6 @@ export function RichTextEditor({ value, doc, accent, onChange, placeholder = "Wr
       AutoJoiner,
     ],
     content: ((doc as Content) ?? value ?? "") as Content,
-    // Emit once on create so the parent captures the canonical HTML + JSON for
-    // whatever content was loaded (doc, value, or a seeded template).
-    onCreate: ({ editor }) => onChange?.(editor.getHTML(), editor.getJSON()),
     onUpdate: ({ editor }) => onChange?.(editor.getHTML(), editor.getJSON()),
     editorProps: {
       attributes: { class: "nx-prose" },
@@ -49,30 +106,24 @@ export function RichTextEditor({ value, doc, accent, onChange, placeholder = "Wr
         const img = event.dataTransfer?.files && Array.from(event.dataTransfer.files).find((f) => f.type.startsWith("image/"));
         if (!img) return false;
         event.preventDefault();
-        const reader = new FileReader();
-        reader.onload = () => {
-          const node = view.state.schema.nodes.image.create({ src: reader.result });
-          const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ?? view.state.selection.from;
-          view.dispatch(view.state.tr.insert(pos, node));
-        };
-        reader.readAsDataURL(img);
+        const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ?? view.state.selection.from;
+        placeAndUpload(view, img, pos);
         return true;
       },
       handlePaste(view, event) {
         const img = event.clipboardData?.files && Array.from(event.clipboardData.files).find((f) => f.type.startsWith("image/"));
         if (!img) return false;
         event.preventDefault();
-        const reader = new FileReader();
-        reader.onload = () => {
-          const node = view.state.schema.nodes.image.create({ src: reader.result });
-          view.dispatch(view.state.tr.replaceSelectionWith(node));
-        };
-        reader.readAsDataURL(img);
+        placeAndUpload(view, img);
         return true;
       },
     },
   });
 
+  // Emit the initial HTML+JSON once the editor exists AND its content has been
+  // applied. onCreate fires too early (immediatelyRender:false + content prop),
+  // returning empty HTML, which would persist an empty htmlBody. A deferred
+  // tick guarantees the loaded doc/value is in place before we read it.
   if (!editor) return <div style={{ height: 300, background: bare ? "transparent" : "#F8FAFC", borderRadius: 8 }} />;
 
   const outer = bare
@@ -130,7 +181,7 @@ function Toolbar({ editor, bare = false }: { editor: Editor; bare?: boolean }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const onPickImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) { const reader = new FileReader(); reader.onload = () => editor.chain().focus().setImage({ src: reader.result as string }).run(); reader.readAsDataURL(file); }
+    if (file) { editor.commands.focus(); placeAndUpload(editor.view, file); }
     e.target.value = "";
   };
   return (

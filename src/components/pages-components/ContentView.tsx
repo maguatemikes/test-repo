@@ -6,6 +6,7 @@ import Link from "next/link";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { renderEmailHtml } from "@/lib/emailRender";
+import { docToHtml, htmlToDoc } from "@/lib/editorSchema";
 import { listTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate, duplicateTemplate, type Template } from "@/lib/templates";
 
 const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
@@ -118,8 +119,8 @@ export function ContentView() {
 
       {editing !== null && (
         <TemplateEditor id={editing === "new" ? null : editing} seed={editing === "new" ? seed : null}
-          onClose={() => { setEditing(null); setSeed(null); }}
-          onSaved={(savedId) => { reload(); setSeed(null); if (savedId != null) setEditing(savedId); }} />
+          onClose={() => { setEditing(null); setSeed(null); reload(); }}
+          onSaved={() => { reload(); setSeed(null); }} />
       )}
 
       <ConfirmDialog
@@ -443,18 +444,29 @@ function StyleRow({ label, children }: { label: string; children: React.ReactNod
 }
 
 function ColorField({ value, onChange }: { value: string; onChange: (c: string) => void }) {
-  // The input is UNCONTROLLED (defaultValue, not value). A controlled
-  // <input type=color> loops forever during a native-picker drag: committed
-  // state lags the live DOM value, so every re-render writes the stale value
-  // back into the input, interrupting the drag and firing another input
-  // event -> "Maximum update depth exceeded". Uncontrolled = React never
-  // writes value back, so there's no fight. A local `shown` drives the label.
+  // UNCONTROLLED (defaultValue) so React never writes the value back mid-drag.
+  // The native picker fires `input` dozens of times/sec; calling setState on
+  // every tick re-renders synchronously and the picker re-fires, exploding to
+  // "Maximum update depth exceeded". So we coalesce: stash the latest value in
+  // a ref and flush ONE setState per animation frame, never inside the event.
   const v = /^#[0-9a-fA-F]{6}$/.test(value) ? value.toLowerCase() : "#000000";
   const [shown, setShown] = useState(v);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pending = useRef(v);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  const onInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    pending.current = e.target.value;
+    if (timer.current) return;
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      setShown(pending.current);
+      onChange(pending.current);
+    }, 16);
+  };
   return (
     <span className="flex items-center gap-2">
       <span style={{ fontSize: 12, color: "#94A3B8", fontVariantNumeric: "tabular-nums", textTransform: "uppercase" }}>{shown}</span>
-      <input type="color" defaultValue={v} onChange={(e) => { setShown(e.target.value); onChange(e.target.value); }} style={{ width: 36, height: 26, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer", padding: 0 }} />
+      <input type="color" defaultValue={v} onChange={onInput} style={{ width: 36, height: 26, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer", padding: 0 }} />
     </span>
   );
 }
@@ -504,21 +516,31 @@ function TemplateEditor({ id, seed, onClose, onSaved }: { id: number | null; see
   const [loading, setLoading] = useState(!!id);
   const [busy, setBusy] = useState(false);
   const [savedState, setSavedState] = useState<"synced" | "saving" | "unsaved">("synced");
-  const [editorReady, setEditorReady] = useState(false);
+  const [currentId, setCurrentId] = useState<number | null>(id);
   const lastSaved = useRef<string | null>(null);
   const thumbRef = useRef<HTMLInputElement>(null);
 
-  // Email-ready HTML rendered from the editor's semantic HTML + Style. This is
-  // what we persist as htmlBody (campaigns send it) and what the size gauge
-  // measures, so the inbox matches the editor.
-  const emailHtml = useMemo(() => renderEmailHtml(body, style), [body, style]);
-  const snapshot = JSON.stringify({ name, subject, body, editorDoc, thumbnail, tags, style });
+  // Semantic HTML derived from the doc (reliable) — falls back to `body` for
+  // freshly-seeded templates before their first edit. Email-ready HTML is then
+  // rendered from that + Style; it's what we persist as htmlBody (campaigns
+  // send it) and what the size gauge measures, so the inbox matches the editor.
+  // Always resolve to a doc (derive one from seeded HTML when unedited) so the
+  // saved template can reload, then render semantic + email HTML from it.
+  const docJson = useMemo(() => editorDoc ?? htmlToDoc(body), [editorDoc, body]);
+  const semantic = useMemo(() => docToHtml(docJson), [docJson]);
+  const emailHtml = useMemo(() => renderEmailHtml(semantic, style), [semantic, style]);
+  const snapshot = JSON.stringify({ name, subject, semantic, thumbnail, tags, style });
 
   useEffect(() => {
     if (id == null) return;
     getTemplate(id).then((t) => {
       if (t) {
-        setName(t.name); setSubject(t.subjectDefault || ""); setBody(t.htmlBody || "");
+        // Don't load the rendered email HTML into `body` — it carries the
+        // <!--nx-email--> sentinel, which makes renderEmailHtml short-circuit
+        // and freeze htmlBody out of sync with later Style edits. The editor
+        // loads from `doc`; onCreate then fills `body` with fresh semantic HTML.
+        setName(t.name); setSubject(t.subjectDefault || "");
+        setBody((t.htmlBody || "").includes("<!--nx-email-->") ? "" : (t.htmlBody || ""));
         const d = (t.design || {}) as Record<string, unknown>;
         setEditorDoc(d.doc ?? null); setThumbnail((d.thumbnail as string) || ""); setTags((d.tags as string[]) || []);
         setStyle({ ...DEFAULT_STYLE, ...((d.style as Partial<StyleSettings>) || {}) });
@@ -530,37 +552,37 @@ function TemplateEditor({ id, seed, onClose, onSaved }: { id: number | null; see
   // Baseline snapshot, captured once the editor has emitted its initial
   // content — so simply opening a template never counts as an edit.
   useEffect(() => {
-    if (loading || !editorReady || lastSaved.current !== null) return;
+    if (loading || lastSaved.current !== null) return;
     lastSaved.current = snapshot;
-  }, [loading, editorReady, snapshot]);
+  }, [loading, snapshot]);
 
   // Autosave (existing templates) — debounced PATCH after real edits stop.
   useEffect(() => {
-    if (loading || !editorReady || lastSaved.current === null) return;
+    if (loading || lastSaved.current === null) return;
     if (snapshot === lastSaved.current) { setSavedState("synced"); return; }
-    if (id == null) { setSavedState("unsaved"); return; } // new template saves on Create
+    if (currentId == null) { setSavedState("unsaved"); return; } // new template saves on Create
     setSavedState("unsaved");
     const t = setTimeout(async () => {
       setSavedState("saving");
-      const ok = await updateTemplate(id, { name: name.trim() || "Untitled template", subjectDefault: subject.trim(), htmlBody: emailHtml, design: { doc: editorDoc, thumbnail, tags, style } });
+      const ok = await updateTemplate(currentId, { name: name.trim() || "Untitled template", subjectDefault: subject.trim(), htmlBody: emailHtml, design: { doc: docJson, thumbnail, tags, style } });
       if (ok) lastSaved.current = snapshot;
       setSavedState(ok ? "synced" : "unsaved");
     }, 1200);
     return () => clearTimeout(t);
-  }, [snapshot, emailHtml, name, subject, editorDoc, thumbnail, tags, style, id, loading, editorReady]);
+  }, [snapshot, emailHtml, name, subject, docJson, thumbnail, tags, style, currentId, loading]);
 
   const save = async () => {
     if (!name.trim()) { alert("Template name is required."); return; }
     setBusy(true);
-    const payload = { name: name.trim(), subjectDefault: subject.trim(), htmlBody: emailHtml, design: { doc: editorDoc, thumbnail, tags, style } };
-    let ok = false; let savedId = id ?? undefined;
-    if (id != null) { ok = await updateTemplate(id, payload); }
-    else { const res = await createTemplate(payload); ok = res.ok; savedId = res.id; }
+    const payload = { name: name.trim(), subjectDefault: subject.trim(), htmlBody: emailHtml, design: { doc: docJson, thumbnail, tags, style } };
+    let ok = false; let savedId = currentId ?? undefined;
+    if (currentId != null) { ok = await updateTemplate(currentId, payload); }
+    else { const res = await createTemplate(payload); ok = res.ok; savedId = res.id; if (res.id != null) setCurrentId(res.id); }
     setBusy(false);
     if (ok) { lastSaved.current = snapshot; setSavedState("synced"); onSaved(savedId); } else alert("Save failed.");
   };
 
-  const wordCount = body.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").trim().split(/\s+/).filter(Boolean).length;
+  const wordCount = semantic.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").trim().split(/\s+/).filter(Boolean).length;
   const sizeBytes = typeof window !== "undefined" ? new Blob([emailHtml]).size : emailHtml.length;
   const sizePct = Math.min(100, (sizeBytes / 102400) * 100); // Gmail clips ~102KB
   const sync = busy ? "saving" : savedState;
@@ -595,7 +617,7 @@ function TemplateEditor({ id, seed, onClose, onSaved }: { id: number | null; see
           <SizeGauge pct={sizePct} kb={sizeBytes / 1024} />
           <span className="hidden md:inline" style={{ fontSize: 12, color: "#94A3B8", fontVariantNumeric: "tabular-nums" }}>{wordCount} words</span>
           <button onClick={onClose} disabled={busy} style={{ fontSize: 13, fontWeight: 500, color: "#64748B", background: "transparent", border: "none", padding: "7px 12px", cursor: "pointer" }}>Cancel</button>
-          <button onClick={save} disabled={busy || loading} style={{ fontSize: 13, fontWeight: 500, color: "#FFFFFF", background: "#0F172A", border: "none", padding: "7px 18px", borderRadius: 8, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>{busy ? "Saving…" : id != null ? "Save" : seed ? "Use template" : "Create"}</button>
+          <button onClick={save} disabled={busy || loading} style={{ fontSize: 13, fontWeight: 500, color: "#FFFFFF", background: "#0F172A", border: "none", padding: "7px 18px", borderRadius: 8, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>{busy ? "Saving…" : currentId != null ? "Save" : seed ? "Use template" : "Create"}</button>
         </div>
       </div>
 
@@ -636,7 +658,7 @@ function TemplateEditor({ id, seed, onClose, onSaved }: { id: number | null; see
               onInput={(e) => { const t = e.currentTarget; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }}
               style={{ width: "100%", fontSize: 36, fontWeight: 700, color: style.textColor, border: "none", outline: "none", background: "transparent", resize: "none", lineHeight: 1.15, letterSpacing: "-0.02em", fontFamily: style.fontFamily, marginBottom: 14, overflow: "hidden" }} />
             <RichTextEditor value={body} doc={editorDoc} accent={style.accent}
-              onChange={(html, json) => { setBody(html); setEditorDoc(json); setEditorReady(true); }}
+              onChange={(html, json) => { setBody(html); setEditorDoc(json); }}
               placeholder="Start writing your email…" bare />
           </div>
         )}

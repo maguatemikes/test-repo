@@ -91,7 +91,8 @@ function block(node: Node, s: EmailStyle, width: number): string {
       const src = el.getAttribute("src") || "";
       if (!src) return "";
       const alt = el.getAttribute("alt") || "";
-      return `<img src="${escAttr(src)}" alt="${escAttr(alt)}" width="${width}" style="display:block;width:100%;max-width:${width}px;height:auto;border:0;border-radius:8px;margin:4px 0 16px;">`;
+      const cw = width - 68; // body cell has 34px padding each side; size images to the content box so fixed-width clients (Outlook) don't overflow
+      return `<img src="${escAttr(src)}" alt="${escAttr(alt)}" width="${cw}" style="display:block;width:100%;max-width:${cw}px;height:auto;border:0;border-radius:8px;margin:4px 0 16px;">`;
     }
     case "DIV":
       return Array.from(el.childNodes).map((n) => block(n, s, width)).join("");

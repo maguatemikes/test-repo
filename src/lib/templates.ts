@@ -31,7 +31,7 @@ const list = (d: unknown): Template[] => (Array.isArray(d) ? d : (((d as { rows?
 /** GET /api/templates — summary rows. */
 export async function listTemplates(): Promise<Template[]> {
   try {
-    const r = await fetch("/api/templates");
+    const r = await fetch("/api/templates", { cache: "no-store" });
     if (!r.ok) return [];
     return list(await r.json()).map((t) => withParsedDesign(t) as Template);
   } catch {
@@ -42,7 +42,7 @@ export async function listTemplates(): Promise<Template[]> {
 /** GET /api/templates/{id} — full record (htmlBody + design). */
 export async function getTemplate(id: number): Promise<Template | null> {
   try {
-    const r = await fetch(`/api/templates/${id}`);
+    const r = await fetch(`/api/templates/${id}`, { cache: "no-store" });
     if (!r.ok) return null;
     return withParsedDesign((await r.json()) as Template);
   } catch {
