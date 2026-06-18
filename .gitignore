@@ -47,3 +47,4 @@ drizzle/
 
 insert-test.mjs
 .revert-point.txt
+.claude/
