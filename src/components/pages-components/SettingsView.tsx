@@ -3,7 +3,7 @@
 import {
   Building2, Users, CreditCard, Plug, Mail, Key, Webhook, FileText,
   AlertCircle, Plus, Trash2, Copy, CheckCircle2, ShieldCheck,
-  UserMinus, Clock, X,
+  UserMinus, Clock, X, ChevronDown, RefreshCw, Send,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -38,6 +38,13 @@ const TIMEZONES = [
   "Asia/Singapore", "Asia/Tokyo", "Asia/Shanghai", "Australia/Sydney",
 ];
 
+// API-key scopes the UI offers at create time (sent in `scopes`, stored in crm_api_keys.scopes_json).
+const SCOPE_OPTIONS = [
+  { value: "read", label: "Read", hint: "Read customers, campaigns, reports" },
+  { value: "write", label: "Write", hint: "Create & update records" },
+  { value: "send", label: "Send", hint: "Trigger campaign / transactional sends" },
+] as const;
+
 const settingsTabs = [
   { id: "org", label: "Organization", icon: Building2 },
   { id: "users", label: "Users & Roles", icon: Users },
@@ -63,6 +70,30 @@ const initials = (name: string, email: string) => {
   const parts = base.split(/\s+/).filter(Boolean);
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return base.slice(0, 2).toUpperCase();
+};
+
+// Normalize the DKIM/SPF/DMARC records the API returns for a domain into a flat
+// list of { type, host, value }. Tolerates several shapes since the exact crm-api
+// envelope isn't pinned (array under dkimRecords/records/dnsRecords + scalar spf/dmarc).
+type DnsRecord = { type: string; host: string; value: string };
+const dnsRecords = (detail: Record<string, unknown> | null | undefined): DnsRecord[] => {
+  if (!detail) return [];
+  const out: DnsRecord[] = [];
+  const arr = get(detail, "dnsRecords") ?? get(detail, "records") ?? get(detail, "dkimRecords") ?? get(detail, "dkim");
+  if (Array.isArray(arr)) {
+    for (const r of arr as Record<string, unknown>[]) {
+      out.push({
+        type: str(get(r, "type"), "TXT"),
+        host: str(get(r, "host") ?? get(r, "name") ?? get(r, "hostname"), "@"),
+        value: str(get(r, "value") ?? get(r, "data") ?? get(r, "record") ?? get(r, "target"), ""),
+      });
+    }
+  }
+  const spf = get(detail, "spfRecord") ?? get(detail, "spf");
+  if (typeof spf === "string" && spf) out.push({ type: "TXT", host: "@", value: spf });
+  const dmarc = get(detail, "dmarcRecord") ?? get(detail, "dmarc");
+  if (typeof dmarc === "string" && dmarc) out.push({ type: "TXT", host: "_dmarc", value: dmarc });
+  return out;
 };
 
 export function SettingsView() {
@@ -163,12 +194,19 @@ export function SettingsView() {
 
   // New-resource form inputs
   const [newKeyName, setNewKeyName] = useState("");
+  const [newKeyScopes, setNewKeyScopes] = useState<string[]>(["read", "write"]);
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const [newDomain, setNewDomain] = useState("");
   const [newProvider, setNewProvider] = useState("shopify");
   const [newProviderLabel, setNewProviderLabel] = useState("");
   const [newHookUrl, setNewHookUrl] = useState("");
   const [newHookEvents, setNewHookEvents] = useState("");
+
+  // Sending-domain DNS records (DKIM/SPF/DMARC) — fetched per domain via GET .../sending-domains/{id}.
+  const [expandedDomain, setExpandedDomain] = useState<string | null>(null);
+  const [domainDetail, setDomainDetail] = useState<Record<string, Record<string, unknown> | null>>({});
+  const [domainBusy, setDomainBusy] = useState<string | null>(null); // id loading detail or re-checking
+  const [hookBusy, setHookBusy] = useState<string | null>(null); // id currently test-firing
 
   const load = useCallback(async (tab: string) => {
     const map: Record<string, { path: string; set: (v: Record<string, unknown>[]) => void }> = {
@@ -209,22 +247,56 @@ export function SettingsView() {
 
   const createKey = async () => {
     if (!newKeyName.trim()) return;
-    const res = await fetch("/api/settings/api-keys", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newKeyName.trim(), scopes: ["read", "write"] }) });
+    if (newKeyScopes.length === 0) { showSave("Pick at least one scope"); return; }
+    const res = await fetch("/api/settings/api-keys", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newKeyName.trim(), scopes: newKeyScopes }) });
     const d = await res.json().catch(() => ({}));
     if (res.ok) {
       const secret = get(d, "key") ?? get(d, "token") ?? get(d, "plaintext") ?? get(d, "secret");
       if (secret) setRevealedKey(String(secret));
-      setNewKeyName(""); showSave("API key created"); load("api");
+      setNewKeyName(""); setNewKeyScopes(["read", "write"]); showSave("API key created"); load("api");
     } else showSave("Failed to create key");
   };
+  const toggleScope = (s: string) => setNewKeyScopes((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
   const addDomain = async () => {
     if (!newDomain.trim()) return;
     const res = await fetch("/api/settings/sending-domains", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ domain: newDomain.trim() }) });
     if (res.ok) { setNewDomain(""); showSave("Domain added"); load("sending"); } else showSave("Failed to add domain");
   };
+  // Fetch the per-domain DNS records (DKIM/SPF/DMARC) the user must publish, and toggle the panel.
+  const toggleDomain = async (id: unknown) => {
+    const key = str(id, "");
+    if (!key) return;
+    if (expandedDomain === key) { setExpandedDomain(null); return; }
+    setExpandedDomain(key);
+    if (!domainDetail[key]) {
+      setDomainBusy(key);
+      const d = await fetch(`/api/settings/sending-domains/${key}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      setDomainBusy(null);
+      setDomainDetail((prev) => ({ ...prev, [key]: (d as Record<string, unknown>) ?? null }));
+    }
+  };
   const verifyDomain = async (id: unknown) => {
-    const res = await fetch(`/api/settings/sending-domains/${id}/verify`, { method: "POST" });
-    if (res.ok) { showSave("Verification requested"); load("sending"); } else showSave("Verify failed");
+    const key = str(id, "");
+    setDomainBusy(key);
+    const res = await fetch(`/api/settings/sending-domains/${key}/verify`, { method: "POST" });
+    setDomainBusy(null);
+    if (res.ok) {
+      showSave("Re-check requested");
+      // Refresh the cached DNS/status detail if its panel is open, then the list.
+      if (expandedDomain === key) {
+        const d = await fetch(`/api/settings/sending-domains/${key}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        setDomainDetail((prev) => ({ ...prev, [key]: (d as Record<string, unknown>) ?? null }));
+      }
+      load("sending");
+    } else showSave("Verify failed");
+  };
+  const testHook = async (id: unknown) => {
+    const key = str(id, "");
+    if (!key) return;
+    setHookBusy(key);
+    const res = await fetch(`/api/settings/webhooks/${key}/test`, { method: "POST" });
+    setHookBusy(null);
+    if (res.ok) showSave("Test event sent"); else showSave("Test delivery failed");
   };
   const addIntegration = async () => {
     if (!newProviderLabel.trim()) return;
@@ -433,10 +505,27 @@ export function SettingsView() {
             <div className="flex items-center justify-between">
               <H t="API Keys" s="Programmatic access to your account" />
             </div>
-            <div className="rounded-xl p-4 flex items-end gap-3" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
-              <div className="flex-1"><label style={{ fontSize: 12, fontWeight: 500, color: "#64748B", display: "block", marginBottom: 5 }}>New key name</label>
-                <input value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} placeholder="e.g. Production server" style={inputStyle} /></div>
-              <button onClick={createKey} className="flex items-center gap-1.5" style={primaryBtn}><Plus size={13} /> Generate</button>
+            <div className="rounded-xl p-4 space-y-3" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
+              <div className="flex items-end gap-3">
+                <div className="flex-1"><label style={{ fontSize: 12, fontWeight: 500, color: "#64748B", display: "block", marginBottom: 5 }}>New key name</label>
+                  <input value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} placeholder="e.g. Production server" style={inputStyle} /></div>
+                <button onClick={createKey} className="flex items-center gap-1.5" style={primaryBtn}><Plus size={13} /> Generate</button>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 500, color: "#64748B", display: "block", marginBottom: 6 }}>Scopes</label>
+                <div className="flex flex-wrap gap-2">
+                  {SCOPE_OPTIONS.map((s) => {
+                    const on = newKeyScopes.includes(s.value);
+                    return (
+                      <button key={s.value} type="button" onClick={() => toggleScope(s.value)} title={s.hint}
+                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5"
+                        style={{ fontSize: 12, fontWeight: 500, border: `1px solid ${on ? "#2563EB" : "var(--border)"}`, background: on ? "#EFF6FF" : "#FFFFFF", color: on ? "#2563EB" : "#64748B", cursor: "pointer" }}>
+                        {on ? <CheckCircle2 size={12} /> : <Plus size={12} />}{s.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
             <div className="rounded-xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
               {loading ? <p style={{ fontSize: 12, color: "#94A3B8", padding: 20 }}>Loading…</p>
@@ -448,6 +537,11 @@ export function SettingsView() {
                       <button onClick={() => del("api-keys", get(k, "id"), () => load("api"))} style={{ color: "#DC2626" }}><Trash2 size={13} /></button>
                     </div>
                     <code style={{ fontSize: 12, fontFamily: "monospace", color: "#64748B", background: "#F8FAFC", padding: "3px 8px", borderRadius: 4 }}>{str(get(k, "prefix") ?? get(k, "maskedKey"), "nxk_…")}</code>
+                    {(() => { const sc = get(k, "scopes"); const list = Array.isArray(sc) ? sc.map(String) : []; return list.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {list.map((s) => <span key={s} className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 600, background: "#EFF6FF", color: "#2563EB" }}>{s}</span>)}
+                      </div>
+                    ) : null; })()}
                     <p style={{ fontSize: 11, color: "#94A3B8", marginTop: 6 }}>Created {fmtDate(get(k, "createdAt"))}</p>
                   </div>
                 ))}
@@ -468,15 +562,53 @@ export function SettingsView() {
                 : domains.length === 0 ? <EmptyState compact icon={Mail} title="No sending domains" description="Add a domain and verify it to start sending." />
                 : domains.map((d, i) => {
                   const verified = !!(get(d, "verified") ?? (str(get(d, "status")).toLowerCase() === "verified"));
+                  const id = str(get(d, "id"), "");
+                  const open = expandedDomain === id;
+                  const busy = domainBusy === id;
+                  const detail = domainDetail[id];
+                  const records = dnsRecords(detail);
                   return (
-                    <div key={i} className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: i < domains.length - 1 ? "1px solid #F8FAFC" : "none" }}>
-                      <Mail size={14} color="#64748B" />
-                      <p className="flex-1" style={{ fontSize: 13, fontWeight: 500, color: "#0F172A", fontFamily: "monospace" }}>{str(get(d, "domain"))}</p>
-                      <span className="flex items-center gap-1 rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 600, background: verified ? "#F0FDF4" : "#FFFBEB", color: verified ? "#16A34A" : "#D97706" }}>
-                        {verified ? <CheckCircle2 size={10} /> : <AlertCircle size={10} />}{verified ? "Verified" : "Pending"}
-                      </span>
-                      {!verified && <button onClick={() => verifyDomain(get(d, "id"))} style={{ fontSize: 11, color: "#2563EB", fontWeight: 500 }}>Verify</button>}
-                      <button onClick={() => del("sending-domains", get(d, "id"), () => load("sending"))} style={{ color: "#DC2626" }}><Trash2 size={13} /></button>
+                    <div key={id || i} style={{ borderBottom: i < domains.length - 1 ? "1px solid #F8FAFC" : "none" }}>
+                      <div className="flex items-center gap-3 px-5 py-4">
+                        <Mail size={14} color="#64748B" />
+                        <p className="flex-1" style={{ fontSize: 13, fontWeight: 500, color: "#0F172A", fontFamily: "monospace" }}>{str(get(d, "domain"))}</p>
+                        <span className="flex items-center gap-1 rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 600, background: verified ? "#F0FDF4" : "#FFFBEB", color: verified ? "#16A34A" : "#D97706" }}>
+                          {verified ? <CheckCircle2 size={10} /> : <AlertCircle size={10} />}{verified ? "Verified" : "Pending"}
+                        </span>
+                        <button onClick={() => toggleDomain(get(d, "id"))} className="flex items-center gap-1" style={{ fontSize: 11, color: "#2563EB", fontWeight: 500 }}>
+                          DNS records <ChevronDown size={12} style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+                        </button>
+                        <button onClick={() => verifyDomain(get(d, "id"))} disabled={busy} title="Re-check DNS" className="flex items-center gap-1" style={{ fontSize: 11, color: "#2563EB", fontWeight: 500, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1 }}>
+                          <RefreshCw size={12} className={busy ? "animate-spin" : undefined} />{verified ? "Re-check" : "Verify"}
+                        </button>
+                        <button onClick={() => del("sending-domains", get(d, "id"), () => load("sending"))} style={{ color: "#DC2626" }}><Trash2 size={13} /></button>
+                      </div>
+                      {open && (
+                        <div className="px-5 pb-4" style={{ background: "#F8FAFC" }}>
+                          {busy && !detail ? (
+                            <p style={{ fontSize: 12, color: "#94A3B8", padding: "12px 0" }}>Loading DNS records…</p>
+                          ) : records.length === 0 ? (
+                            <p style={{ fontSize: 12, color: "#94A3B8", padding: "12px 0" }}>No DNS records returned for this domain yet.</p>
+                          ) : (
+                            <div className="pt-3">
+                              <p style={{ fontSize: 11, color: "#64748B", marginBottom: 8 }}>Add these records at your DNS provider, then click Re-check.</p>
+                              <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)", background: "#FFFFFF" }}>
+                                <div className="grid px-3 py-2" style={{ gridTemplateColumns: "60px 1.2fr 2fr 28px", gap: 8, fontSize: 10, fontWeight: 600, color: "#94A3B8", background: "#F8FAFC", borderBottom: "1px solid var(--border)" }}>
+                                  <span>TYPE</span><span>HOST</span><span>VALUE</span><span />
+                                </div>
+                                {records.map((r, ri) => (
+                                  <div key={ri} className="grid items-center px-3 py-2" style={{ gridTemplateColumns: "60px 1.2fr 2fr 28px", gap: 8, borderBottom: ri < records.length - 1 ? "1px solid #F8FAFC" : "none" }}>
+                                    <span style={{ fontSize: 11, fontWeight: 600, color: "#0F172A" }}>{r.type}</span>
+                                    <code style={{ fontSize: 11, fontFamily: "monospace", color: "#0F172A", wordBreak: "break-all" }}>{r.host}</code>
+                                    <code style={{ fontSize: 11, fontFamily: "monospace", color: "#64748B", wordBreak: "break-all" }}>{r.value}</code>
+                                    <button onClick={() => navigator.clipboard?.writeText(r.value)} title="Copy value" style={{ color: "#2563EB" }}><Copy size={12} /></button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -525,14 +657,24 @@ export function SettingsView() {
             <div className="rounded-xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
               {loading ? <p style={{ fontSize: 12, color: "#94A3B8", padding: 20 }}>Loading…</p>
                 : hooks.length === 0 ? <EmptyState compact icon={Webhook} title="No webhooks" description="Add an endpoint to receive event notifications." />
-                : hooks.map((h, i) => (
-                  <div key={i} className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: i < hooks.length - 1 ? "1px solid #F8FAFC" : "none" }}>
+                : hooks.map((h, i) => {
+                  const id = str(get(h, "id"), "");
+                  const busy = hookBusy === id;
+                  const status = str(get(h, "status"), "").toLowerCase();
+                  const statusColor = status === "active" ? { bg: "#F0FDF4", fg: "#16A34A" } : status === "failing" ? { bg: "#FEF2F2", fg: "#DC2626" } : status === "paused" ? { bg: "#F1F5F9", fg: "#64748B" } : null;
+                  return (
+                  <div key={id || i} className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: i < hooks.length - 1 ? "1px solid #F8FAFC" : "none", opacity: busy ? 0.6 : 1 }}>
                     <Webhook size={14} color="#64748B" />
                     <div className="flex-1 min-w-0"><p className="truncate" style={{ fontSize: 12, fontWeight: 500, color: "#0F172A", fontFamily: "monospace" }}>{str(get(h, "url"))}</p>
-                      <p style={{ fontSize: 11, color: "#64748B" }}>{(() => { const ev = get(h, "events"); return Array.isArray(ev) ? ev.join(", ") : str(ev, "all events"); })()}</p></div>
+                      <p style={{ fontSize: 11, color: "#64748B" }}>{(() => { const ev = get(h, "events") ?? get(h, "eventsSubscribed"); return Array.isArray(ev) ? ev.join(", ") : str(ev, "all events"); })()}</p></div>
+                    {statusColor && <span className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 600, background: statusColor.bg, color: statusColor.fg, textTransform: "capitalize" }}>{status}</span>}
+                    <button onClick={() => testHook(get(h, "id"))} disabled={busy} title="Send a test event" className="flex items-center gap-1" style={{ fontSize: 11, color: "#2563EB", fontWeight: 500, cursor: busy ? "not-allowed" : "pointer" }}>
+                      <Send size={12} />{busy ? "Sending…" : "Test"}
+                    </button>
                     <button onClick={() => del("webhooks", get(h, "id"), () => load("webhooks"))} style={{ color: "#DC2626" }}><Trash2 size={13} /></button>
                   </div>
-                ))}
+                  );
+                })}
             </div>
           </div>
         )}
