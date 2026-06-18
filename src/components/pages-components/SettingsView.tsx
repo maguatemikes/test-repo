@@ -101,9 +101,13 @@ export function SettingsView() {
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const showSave = (label = "Changes saved") => { setSaveToast(label); setTimeout(() => setSaveToast(null), 2500); };
 
-  // Current user — owner-only mutations are gated on super_admin.
+  // Current user — gates mirror the crm-api permission matrix:
+  //   super_admin only → member role change / removal, audit log read
+  //   admin OR super_admin → invite create/revoke, org settings write
+  //   any member → read roster + org settings
   const { user: currentUser } = useCurrentUser();
   const isOwner = currentUser?.role === "super_admin";
+  const isAdminPlus = currentUser?.role === "admin" || currentUser?.role === "super_admin";
 
   // ── Invite teammate (already wired → crm-api) ──
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -311,6 +315,7 @@ export function SettingsView() {
   };
 
   const inputStyle = { width: "100%", fontSize: 13, padding: "8px 12px", border: "1px solid var(--border)", borderRadius: 6, outline: "none", color: "#0F172A" } as const;
+  const roStyle = { background: "#F8FAFC", color: "#64748B", cursor: "not-allowed" } as const; // read-only look for non-admins
   const primaryBtn = { fontSize: 12, fontWeight: 500, color: "#FFFFFF", background: "#2563EB", padding: "8px 16px", borderRadius: 6, border: "none", cursor: "pointer", fontFamily: font } as const;
   const H = ({ t, s }: { t: string; s?: string }) => (
     <div><h2 style={{ fontSize: 15, fontWeight: 600, color: "#0F172A" }}>{t}</h2>{s && <p style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>{s}</p>}</div>
@@ -365,7 +370,7 @@ export function SettingsView() {
       {/* Settings nav */}
       <div className="py-5 px-3 w-full md:w-[200px] md:shrink-0" style={{ background: "#FFFFFF", borderBottom: "1px solid var(--border)" }}>
         <p style={{ fontSize: 10, fontWeight: 600, color: "#64748B", letterSpacing: "0.06em", padding: "0 8px 8px" }}>SETTINGS</p>
-        {settingsTabs.map((tab) => {
+        {settingsTabs.filter((tab) => tab.id !== "audit" || isOwner).map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
@@ -385,15 +390,15 @@ export function SettingsView() {
             <div className="rounded-xl p-6 space-y-5" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 500, color: "#0F172A", display: "block", marginBottom: 5 }}>Organization Name</label>
-                <input value={orgName} onChange={(e) => setOrgName(e.target.value)} style={inputStyle} />
+                <input value={orgName} onChange={(e) => setOrgName(e.target.value)} disabled={!isAdminPlus} style={{ ...inputStyle, ...(isAdminPlus ? {} : roStyle) }} />
               </div>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 500, color: "#0F172A", display: "block", marginBottom: 5 }}>Billing Email</label>
-                <input value={orgBilling} onChange={(e) => setOrgBilling(e.target.value)} placeholder="billing@company.com" style={inputStyle} />
+                <input value={orgBilling} onChange={(e) => setOrgBilling(e.target.value)} placeholder="billing@company.com" disabled={!isAdminPlus} style={{ ...inputStyle, ...(isAdminPlus ? {} : roStyle) }} />
               </div>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 500, color: "#0F172A", display: "block", marginBottom: 5 }}>Timezone</label>
-                <select value={orgTz} onChange={(e) => setOrgTz(e.target.value)} style={{ ...inputStyle, background: "#FFFFFF" }}>
+                <select value={orgTz} onChange={(e) => setOrgTz(e.target.value)} disabled={!isAdminPlus} style={{ ...inputStyle, background: "#FFFFFF", ...(isAdminPlus ? {} : roStyle) }}>
                   {(TIMEZONES.includes(orgTz) ? TIMEZONES : [orgTz, ...TIMEZONES]).map((tz) => (
                     <option key={tz} value={tz}>{tz}</option>
                   ))}
@@ -404,7 +409,11 @@ export function SettingsView() {
                 <div><p style={{ fontSize: 11, color: "#94A3B8" }}>Slug</p><p style={{ fontSize: 13, color: "#0F172A", fontFamily: "monospace" }}>{str(get(org, "slug"))}</p></div>
                 <div><p style={{ fontSize: 11, color: "#94A3B8" }}>Status</p><span className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 600, background: "#F0FDF4", color: "#16A34A" }}>{str(get(org, "status")).toUpperCase()}</span></div>
               </div>
-              <button onClick={saveOrg} disabled={orgBusy || loading} style={{ ...primaryBtn, opacity: orgBusy ? 0.6 : 1 }}>{orgBusy ? "Saving…" : "Save Changes"}</button>
+              {isAdminPlus ? (
+                <button onClick={saveOrg} disabled={orgBusy || loading} style={{ ...primaryBtn, opacity: orgBusy ? 0.6 : 1 }}>{orgBusy ? "Saving…" : "Save Changes"}</button>
+              ) : (
+                <p style={{ fontSize: 11, color: "#94A3B8" }}>Only Admins and Super Admins can edit organization settings.</p>
+              )}
             </div>
           </div>
         )}
@@ -413,7 +422,7 @@ export function SettingsView() {
           <div className="max-w-2xl space-y-6">
             <div className="flex items-center justify-between">
               <H t="Users & Roles" s="Manage team access and permissions" />
-              {isOwner && (
+              {isAdminPlus && (
                 <button onClick={() => { setInviteError(null); setInviteOpen(true); }} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF", cursor: "pointer" }}>
                   <Plus size={13} /> Invite Teammate
                 </button>
@@ -472,7 +481,7 @@ export function SettingsView() {
                         <div className="flex-1 min-w-0"><p className="truncate" style={{ fontSize: 13, fontWeight: 500, color: "#0F172A" }}>{email}</p>
                           <p style={{ fontSize: 11, color: "#94A3B8" }}>Invited {fmtDate(get(inv, "createdAt") ?? get(inv, "invitedAt"))}{get(inv, "expiresAt") ? ` · expires ${fmtDate(get(inv, "expiresAt"))}` : ""}</p></div>
                         {role && <span className="rounded-full px-2 py-0.5" style={{ fontSize: 11, background: "#FFFBEB", color: "#D97706", whiteSpace: "nowrap" }}>{roleLabel(role)}</span>}
-                        {isOwner && id && (
+                        {isAdminPlus && id && (
                           <button onClick={() => revokeInvite(inv)} disabled={busy} title="Revoke invite" style={{ color: "#DC2626", cursor: busy ? "not-allowed" : "pointer" }}><X size={15} /></button>
                         )}
                       </div>
@@ -482,7 +491,13 @@ export function SettingsView() {
               </div>
             )}
 
-            {!isOwner && <p style={{ fontSize: 11, color: "#94A3B8" }}>Only organization owners (Super Admin) can invite, change roles, or remove members.</p>}
+            {!isOwner && (
+              <p style={{ fontSize: 11, color: "#94A3B8" }}>
+                {isAdminPlus
+                  ? "Admins can invite and revoke invites. Only Super Admins can change roles or remove members."
+                  : "Only Admins and Super Admins can manage team members and invites."}
+              </p>
+            )}
           </div>
         )}
 
@@ -679,7 +694,7 @@ export function SettingsView() {
           </div>
         )}
 
-        {activeTab === "audit" && (
+        {activeTab === "audit" && isOwner && (
           <div className="max-w-2xl space-y-5">
             <H t="Audit Log" s="Chronological record of admin actions" />
             <div className="rounded-xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
