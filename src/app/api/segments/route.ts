@@ -90,8 +90,12 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: true, members: toMembers((await pr.json()).sample) });
     }
 
-    // list — crm-api memberCount is unmaterialized (always 0, lastRefreshedAt null),
-    // so compute live counts via preview. (Backend ask: materialize memberCount.)
+    // crm-api materializes segment membership (SegmentRefreshWorker every 15m +
+    // refresh-on-PATCH + synchronous refresh at send), so memberCount is accurate
+    // for materialized segments — read it directly (fast, no preview per row).
+    // A brand-new segment isn't materialized until the worker runs (or a send forces
+    // it), so memberCount is 0/stale with lastRefreshedAt null; for those only, fall
+    // back to a live preview so the UI shows a real count instead of 0.
     const res = await api(cookie, `/segments`);
     if (!res.ok) return NextResponse.json({ ok: true, segments: [] });
     const list = await res.json();
@@ -99,10 +103,12 @@ export async function GET(req: Request) {
       (list.rows || []).map(async (s: Record<string, unknown>) => {
         const rule = parseRule(s.ruleDefinition);
         let count = Number(s.memberCount ?? 0);
-        try {
-          const pr = await api(cookie, `/segments/preview`, { method: "POST", body: JSON.stringify({ ruleDefinition: rule }) });
-          if (pr.ok) count = (await pr.json()).count ?? count;
-        } catch { /* keep stored count */ }
+        if (!s.lastRefreshedAt) {
+          try {
+            const pr = await api(cookie, `/segments/preview`, { method: "POST", body: JSON.stringify({ ruleDefinition: rule }) });
+            if (pr.ok) count = (await pr.json()).count ?? count;
+          } catch { /* keep materialized count */ }
+        }
         return { id: String(s.id), name: s.name, rules: ruleToDisplay(rule), count, status: "ready" as const };
       }),
     );
@@ -140,6 +146,20 @@ export async function POST(req: Request) {
     if (!res.ok) return NextResponse.json({ ok: true, count: 0, members: [] });
     const d = await res.json();
     return NextResponse.json({ ok: true, count: d.count ?? 0, members: toMembers(d.sample) });
+  } catch (err) {
+    return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 502 });
+  }
+}
+
+/** DELETE /api/segments?id={id} → crm-api DELETE /api/segments/{id}. */
+export async function DELETE(req: Request) {
+  if (!API_BASE) return NextResponse.json({ ok: false, error: "Not configured" }, { status: 503 });
+  const id = new URL(req.url).searchParams.get("id");
+  if (!id) return NextResponse.json({ ok: false, error: "Missing id" }, { status: 400 });
+  const cookie = req.headers.get("cookie") || "";
+  try {
+    const res = await api(cookie, `/segments/${encodeURIComponent(id)}`, { method: "DELETE" });
+    return NextResponse.json({ ok: res.ok }, { status: res.ok ? 200 : res.status });
   } catch (err) {
     return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 502 });
   }
