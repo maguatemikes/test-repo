@@ -64,8 +64,17 @@ export function HostedForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, displayName: nameParts.join(" ") || undefined, fields: values }),
       });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || "Something went wrong");
+      // Parse defensively — an error/empty response (e.g. a 404 with no body)
+      // must not crash with "Unexpected end of JSON input".
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) {
+        throw new Error(
+          data.error ||
+            (res.status === 404
+              ? "This form isn't available right now — please try again later."
+              : `Couldn't submit (error ${res.status}). Please try again.`),
+        );
+      }
       if (success?.action === "redirect" && success.redirectUrl) {
         window.location.href = success.redirectUrl;
         return;

@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Plus, Eye, Code, Trash2, X, Copy, Check } from "lucide-react";
+import { FileText, Plus, Eye, Code, Trash2, X, Copy, Check, Mail } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -17,7 +17,8 @@ type FormType = "popup" | "embed" | "slide_in" | "full_screen" | "hosted";
 type FormStatus = "draft" | "active" | "paused" | "archived";
 type FieldType = "email" | "text" | "tel" | "checkbox" | "select" | "textarea";
 type FormField = { id: string; type: FieldType; label: string; required: boolean; options?: string[] };
-type FormDesign = { accentColor: string; submitText: string; title: string; description: string };
+type FormVariant = "standard" | "waitlist";
+type FormDesign = { accentColor: string; submitText: string; title: string; description: string; variant?: FormVariant };
 type FormTargeting = { urls: string; device: "all" | "desktop" | "mobile" };
 type FormSuccess = { trigger: string; action: "message" | "redirect" | "close"; message?: string; redirectUrl?: string };
 
@@ -36,8 +37,9 @@ const TYPE_LABEL: Record<FormType, string> = {
 const typeColors: Record<string, { bg: string; color: string }> = {
   Popup: { bg: "#EFF6FF", color: "#1D4ED8" }, Embed: { bg: "#F0FDF4", color: "#15803D" },
   "Slide-in": { bg: "#F5F3FF", color: "#6D28D9" }, "Full-screen": { bg: "#FFF7ED", color: "#C2410C" },
-  Hosted: { bg: "#F1F5F9", color: "#334155" },
+  Hosted: { bg: "#F1F5F9", color: "#334155" }, Waitlist: { bg: "#F1F5F9", color: "#0F172A" },
 };
+const formVariant = (f: { design: FormDesign | null }): FormVariant => (f.design?.variant === "waitlist" ? "waitlist" : "standard");
 const statusDot: Record<string, string> = { active: "#22C55E", paused: "#F97316", draft: "#94A3B8", archived: "#CBD5E1" };
 
 const PALETTE: { label: string; type: FieldType }[] = [
@@ -63,6 +65,18 @@ function defaultForm(lists: ListRow[]): FormRow {
   };
 }
 
+function defaultWaitlist(lists: ListRow[]): FormRow {
+  return {
+    id: 0, name: "Marketplace waitlist", slug: "", type: "embed", status: "draft",
+    impressions: 0, submissions: 0, targetListId: lists[0]?.id ?? null,
+    fields: [{ id: rid(), type: "email", label: "Work email — get early access", required: true }],
+    design: { accentColor: "#0F172A", submitText: "Join waitlist", title: "Join the waitlist", description: "Be the first to get early access.", variant: "waitlist" },
+    targeting: { urls: "", device: "all" },
+    success: { trigger: "immediately", action: "message", message: "You're on the list!", redirectUrl: "" },
+    updatedAt: "—",
+  };
+}
+
 const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
 
 // ================= LIST VIEW =================
@@ -70,6 +84,7 @@ export function FormsView({ forms, lists }: { forms: FormRow[]; lists: ListRow[]
   const router = useRouter();
   const [editing, setEditing] = useState<FormRow | null>(null);
   const [embedFor, setEmbedFor] = useState<FormRow | null>(null);
+  const [picking, setPicking] = useState(false);
 
   if (editing) {
     return (
@@ -91,12 +106,18 @@ export function FormsView({ forms, lists }: { forms: FormRow[]; lists: ListRow[]
   return (
     <div className="p-4 md:p-6 space-y-4" style={{ fontFamily: font }}>
       {embedFor && <EmbedModal form={embedFor} onClose={() => setEmbedFor(null)} />}
+      {picking && (
+        <NewFormPicker
+          onClose={() => setPicking(false)}
+          onChoose={(variant) => { setPicking(false); setEditing(variant === "waitlist" ? defaultWaitlist(lists) : defaultForm(lists)); }}
+        />
+      )}
 
       <div className="flex items-center justify-between">
         <p style={{ fontSize: 12, color: "#64748B" }}>
           <strong style={{ color: "#0F172A" }}>{forms.length}</strong> forms · <strong style={{ color: "#16A34A" }}>{active}</strong> active
         </p>
-        <button onClick={() => setEditing(defaultForm(lists))} className="flex items-center gap-1.5 rounded-lg px-3 py-2"
+        <button onClick={() => setPicking(true)} className="flex items-center gap-1.5 rounded-lg px-3 py-2"
           style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF", border: "none", cursor: "pointer" }}>
           <Plus size={13} /> New Form
         </button>
@@ -133,7 +154,7 @@ export function FormsView({ forms, lists }: { forms: FormRow[]; lists: ListRow[]
                   title="No forms yet"
                   description="Build a signup form to capture subscribers — embed it on your site or share a hosted link. Submissions flow straight into your lists."
                   action={
-                    <button onClick={() => setEditing(defaultForm(lists))} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF", cursor: "pointer" }}>
+                    <button onClick={() => setPicking(true)} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, fontWeight: 500, background: "#2563EB", color: "#FFFFFF", cursor: "pointer" }}>
                       <Plus size={13} /> New Form
                     </button>
                   }
@@ -141,7 +162,7 @@ export function FormsView({ forms, lists }: { forms: FormRow[]; lists: ListRow[]
               </td></tr>
             )}
             {forms.map((f, i) => {
-              const label = TYPE_LABEL[f.type];
+              const label = formVariant(f) === "waitlist" ? "Waitlist" : TYPE_LABEL[f.type];
               const tc = typeColors[label] ?? typeColors.Hosted;
               const conv = f.impressions > 0 ? ((f.submissions / f.impressions) * 100).toFixed(1) + "%" : "—";
               return (
@@ -203,7 +224,11 @@ function FormBuilder({ initial, lists, onBack, onListsChanged }: {
   const [savedNote, setSavedNote] = useState(false);
 
   const isNew = formId === 0;
+  const isWaitlist = design.variant === "waitlist";
   const tabs = ["Design", "Targeting", "Behavior"];
+  // Waitlist forms are email-only; the placeholder lives on the (single) email field's label.
+  const emailField = fields.find((f) => f.type === "email") ?? fields[0];
+  const setPlaceholder = (label: string) => emailField && patchField(emailField.id, { label });
 
   const addField = (p: { label: string; type: FieldType }) =>
     setFields((prev) => [...prev, { id: rid(), type: p.type, label: p.label, required: p.type === "email", options: p.type === "select" ? ["Option 1", "Option 2"] : undefined }]);
@@ -217,10 +242,11 @@ function FormBuilder({ initial, lists, onBack, onListsChanged }: {
       const input = { name, type, status: newStatus, targetListId, fields, design, targeting, success };
       if (formId === 0) {
         const r = await createFormAction(input);
-        setFormId(r.id); setSlug(r.slug);
+        setFormId(r.id); setSlug((prev) => r.slug || prev);
       } else {
         const r = await updateFormAction(formId, input);
-        setSlug(r.slug);
+        // PATCH may not echo the slug back — never overwrite a known slug with "".
+        setSlug((prev) => r.slug || prev);
       }
       setStatus(newStatus);
       setSaving(false);
@@ -249,16 +275,18 @@ function FormBuilder({ initial, lists, onBack, onListsChanged }: {
           onClose={() => setEmbedOpen(false)}
         />
       )}
-      {/* Left: field palette */}
-      <div className="p-4 space-y-2 lg:overflow-y-auto" style={{ width: "100%", maxWidth: 220, background: "#FFFFFF", borderRight: "1px solid var(--border)", flexShrink: 0 }}>
-        <p style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: "0.04em", marginBottom: 4 }}>ADD FIELDS</p>
-        {PALETTE.map((p) => (
-          <button key={p.label} onClick={() => addField(p)} className="w-full flex items-center gap-2 rounded-lg px-3 py-2"
-            style={{ border: "1px solid var(--border)", fontSize: 12, color: "#475569", background: "#fff", cursor: "pointer", textAlign: "left" }}>
-            <Plus size={12} /> {p.label}
-          </button>
-        ))}
-      </div>
+      {/* Left: field palette (standard forms only — waitlist is email-only) */}
+      {!isWaitlist && (
+        <div className="p-4 space-y-2 lg:overflow-y-auto" style={{ width: "100%", maxWidth: 220, background: "#FFFFFF", borderRight: "1px solid var(--border)", flexShrink: 0 }}>
+          <p style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: "0.04em", marginBottom: 4 }}>ADD FIELDS</p>
+          {PALETTE.map((p) => (
+            <button key={p.label} onClick={() => addField(p)} className="w-full flex items-center gap-2 rounded-lg px-3 py-2"
+              style={{ border: "1px solid var(--border)", fontSize: 12, color: "#475569", background: "#fff", cursor: "pointer", textAlign: "left" }}>
+              <Plus size={12} /> {p.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Canvas */}
       <div className="flex-1 flex flex-col min-w-0" style={{ background: "#F8FAFC" }}>
@@ -283,6 +311,17 @@ function FormBuilder({ initial, lists, onBack, onListsChanged }: {
         {error && <div style={{ background: "#FEF2F2", color: "#DC2626", fontSize: 12, padding: "8px 16px", borderBottom: "1px solid #FECACA" }}>{error}</div>}
 
         <div className="flex-1 lg:overflow-y-auto flex items-start justify-center p-6">
+          {isWaitlist ? (
+          <div className="w-full" style={{ maxWidth: 560 }}>
+            <p style={{ fontSize: 11, color: "#94A3B8", textAlign: "center", marginBottom: 18 }}>This is how the waitlist pill looks where you embed it.</p>
+            <input value={design.title} onChange={(e) => setDesign({ ...design, title: e.target.value })} placeholder="Heading (optional)" style={{ fontSize: 22, fontWeight: 700, color: "#0F172A", border: "1px solid transparent", borderRadius: 6, width: "100%", outline: "none", textAlign: "center", marginBottom: 4, padding: 2 }} onFocus={(e) => (e.currentTarget.style.border = "1px solid var(--border)")} onBlur={(e) => (e.currentTarget.style.border = "1px solid transparent")} />
+            <input value={design.description} onChange={(e) => setDesign({ ...design, description: e.target.value })} placeholder="Subtext (optional)" style={{ fontSize: 13, color: "#64748B", border: "1px solid transparent", borderRadius: 6, width: "100%", outline: "none", textAlign: "center", marginBottom: 20, padding: 2 }} onFocus={(e) => (e.currentTarget.style.border = "1px solid var(--border)")} onBlur={(e) => (e.currentTarget.style.border = "1px solid transparent")} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, maxWidth: 480, margin: "0 auto", background: "#fff", border: "1px solid #E5E7EB", borderRadius: 999, padding: "6px 6px 6px 18px", boxShadow: "0 1px 2px rgba(15,23,42,.06)" }}>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 14, color: "#94A3B8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{emailField?.label || "Email"}</span>
+              <span style={{ flex: "none", borderRadius: 999, background: design.accentColor, color: "#fff", fontSize: 13, fontWeight: 600, padding: "10px 18px" }}>{design.submitText}</span>
+            </div>
+          </div>
+          ) : (
           <div className="rounded-xl shadow-2xl overflow-hidden" style={{ width: "100%", maxWidth: 400, background: "#FFFFFF", border: "1px solid var(--border)" }}>
             <div style={{ height: 6, background: design.accentColor }} />
             <div className="p-7">
@@ -317,12 +356,42 @@ function FormBuilder({ initial, lists, onBack, onListsChanged }: {
               </div>
             </div>
           </div>
+          )}
         </div>
       </div>
 
       {/* Right config */}
       <div className="p-5 lg:overflow-y-auto space-y-5" style={{ width: "100%", maxWidth: 270, background: "#FFFFFF", borderLeft: "1px solid var(--border)", flexShrink: 0 }}>
-        {tab === "Design" && (
+        {tab === "Design" && isWaitlist && (
+          <>
+            <Section title="FORM TYPE">
+              <div style={{ ...selectStyle, color: "#0F172A", background: "#F8FAFC" }}>Waitlist · inline pill</div>
+              <p style={{ fontSize: 10, color: "#94A3B8", marginTop: 6 }}>Email-only pill. Paste the snippet from “Embed code” onto any site.</p>
+            </Section>
+            <Section title="EMAILS GO TO LIST">
+              <select value={targetListId ?? ""} onChange={(e) => setTargetListId(e.target.value ? Number(e.target.value) : null)} style={selectStyle}>
+                <option value="">— none —</option>
+                {lists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+              <button onClick={addList} style={{ fontSize: 11, color: "#2563EB", background: "none", border: "none", cursor: "pointer", marginTop: 6 }}>+ New list</button>
+              <p style={{ fontSize: 10, color: "#94A3B8", marginTop: 6 }}>Tip: point this at a “Marketplace Wishlist” list to segment these signups.</p>
+            </Section>
+            <Section title="EMAIL PLACEHOLDER">
+              <input value={emailField?.label ?? ""} onChange={(e) => setPlaceholder(e.target.value)} style={selectStyle} />
+            </Section>
+            <Section title="BUTTON TEXT">
+              <input value={design.submitText} onChange={(e) => setDesign({ ...design, submitText: e.target.value })} style={selectStyle} />
+            </Section>
+            <Section title="BUTTON COLOR">
+              <div className="flex gap-2">
+                {["#0F172A", "#2563EB", "#7C3AED", "#DC2626", "#16A34A"].map((c) => (
+                  <button key={c} onClick={() => setDesign({ ...design, accentColor: c })} className="rounded" style={{ width: 26, height: 26, background: c, border: design.accentColor === c ? "2px solid #0F172A" : "1px solid var(--border)", cursor: "pointer" }} />
+                ))}
+              </div>
+            </Section>
+          </>
+        )}
+        {tab === "Design" && !isWaitlist && (
           <>
             <Section title="FORM TYPE">
               <select value={type === "embed" || type === "hosted" ? type : "embed"} onChange={(e) => setType(e.target.value as FormType)} style={selectStyle}>
@@ -392,12 +461,77 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+// ================= NEW FORM PICKER =================
+function NewFormPicker({ onClose, onChoose }: { onClose: () => void; onChoose: (v: FormVariant) => void }) {
+  const cards: { variant: FormVariant; icon: typeof FileText; title: string; desc: string }[] = [
+    { variant: "standard", icon: FileText, title: "Standard form", desc: "Multi-field signup — name, email, phone, and more. Embed it or share a hosted link." },
+    { variant: "waitlist", icon: Mail, title: "Waitlist pill", desc: "Email-only inline pill for early-access / wishlist signups. Drops straight onto any page." },
+  ];
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.35)", zIndex: 200 }} />
+      <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: "min(560px, 92vw)", background: "#FFFFFF", borderRadius: 12, padding: 24, border: "1px solid var(--border)", boxShadow: "0 16px 48px rgba(15,23,42,0.16)", zIndex: 201, fontFamily: font }}>
+        <div className="flex items-center justify-between mb-1">
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: "#0F172A" }}>Create a form</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={16} color="#94A3B8" /></button>
+        </div>
+        <p style={{ fontSize: 12, color: "#64748B", marginBottom: 16 }}>Pick a starting point — the layouts are different.</p>
+        <div className="grid grid-cols-2 gap-3">
+          {cards.map((c) => (
+            <button key={c.variant} onClick={() => onChoose(c.variant)}
+              className="text-left rounded-xl"
+              style={{ border: "1px solid var(--border)", background: "#fff", padding: 16, cursor: "pointer" }}
+              onMouseEnter={(e) => { e.currentTarget.style.border = "1px solid #2563EB"; e.currentTarget.style.boxShadow = "0 4px 14px rgba(37,99,235,0.12)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.border = "1px solid var(--border)"; e.currentTarget.style.boxShadow = "none"; }}>
+              <div style={{ width: 34, height: 34, borderRadius: 8, background: "#F1F5F9", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
+                <c.icon size={17} color="#0F172A" />
+              </div>
+              <p style={{ fontSize: 13, fontWeight: 600, color: "#0F172A", marginBottom: 4 }}>{c.title}</p>
+              <p style={{ fontSize: 11, color: "#64748B", lineHeight: 1.45 }}>{c.desc}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ================= EMBED MODAL =================
 function EmbedModal({ form, onClose }: { form: FormRow; onClose: () => void }) {
   const origin = typeof window !== "undefined" ? window.location.origin : "https://your-app";
   const url = `${origin}/f/${form.slug}`;
   const script = `<script src="${origin}/embed.js" data-form="${form.slug}" data-max-width="460" async></script>`;
   const iframe = `<iframe\n  src="${url}?embed=1"\n  style="width:100%;max-width:460px;height:540px;border:0;"\n  title="${form.name}">\n</iframe>`;
+  // Self-contained "waitlist pill" — posts email straight to our public submit
+  // endpoint (CORS-enabled), no iframe. Submitters land in this form's target list.
+  // Placeholder / button text / colour mirror what was set in the builder.
+  const isWaitlist = form.design?.variant === "waitlist";
+  const ph = (form.fields?.find((f) => f.type === "email")?.label || "Work email — get early access").replace(/"/g, "&quot;");
+  const btnText = form.design?.submitText || "Join waitlist";
+  const btnColor = form.design?.accentColor || "#0F172A";
+  const pill = `<!-- NetX waitlist pill → "${form.name}" -->
+<form class="nx-waitlist" onsubmit="return nxWaitlist(this,event)">
+  <input type="email" name="email" placeholder="${ph}" required>
+  <button type="submit">${btnText}</button>
+</form>
+<style>
+  .nx-waitlist{display:flex;align-items:center;gap:8px;max-width:480px;background:#fff;border:1px solid #E5E7EB;border-radius:999px;padding:6px 6px 6px 18px;box-shadow:0 1px 2px rgba(15,23,42,.06);font-family:-apple-system,Segoe UI,Roboto,sans-serif}
+  .nx-waitlist input{flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:14px;color:#0F172A}
+  .nx-waitlist input::placeholder{color:#94A3B8}
+  .nx-waitlist button{flex:none;border:0;border-radius:999px;background:${btnColor};color:#fff;font-size:13px;font-weight:600;padding:10px 18px;cursor:pointer}
+  .nx-waitlist button:disabled{opacity:.6;cursor:default}
+  .nx-waitlist.done{justify-content:center;color:#0F172A;font-size:14px;font-weight:600;padding:12px 18px}
+</style>
+<script>
+function nxWaitlist(form,e){e.preventDefault();
+  var email=form.email.value, btn=form.querySelector('button'), txt=btn.textContent;
+  btn.disabled=true; btn.textContent='Joining\\u2026';
+  fetch('${origin}/api/forms/${form.slug}/submit',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({email:email, fields:{email:email}})})
+  .then(function(r){if(!r.ok)throw 0; form.classList.add('done'); form.innerHTML='\\u2713 You\\u2019re on the list';})
+  .catch(function(){btn.disabled=false; btn.textContent=txt; alert('Something went wrong \\u2014 please try again.');});
+  return false;}
+</script>`;
   const isEmbed = form.type === "embed";
   const [copied, setCopied] = useState<string | null>(null);
   const copy = (key: string, text: string) => { navigator.clipboard?.writeText(text); setCopied(key); setTimeout(() => setCopied(null), 1500); };
@@ -413,19 +547,26 @@ function EmbedModal({ form, onClose }: { form: FormRow; onClose: () => void }) {
 
         {form.status !== "active" && <p style={{ fontSize: 12, color: "#C2410C", background: "#FFF7ED", padding: "8px 10px", borderRadius: 6, marginBottom: 14 }}>This form is <b>{form.status}</b> — activate it so submissions are accepted.</p>}
 
-        {isEmbed ? (
+        {isWaitlist ? (
+          <>
+            <Block label="Waitlist pill — paste this anywhere (HTML, Shopify, WordPress)" value={pill} copied={copied === "pill"} onCopy={() => copy("pill", pill)} mono />
+            <Block label="Hosted URL (also works as a shareable link)" value={url} copied={copied === "url"} onCopy={() => copy("url", url)} />
+            <p style={{ fontSize: 11, color: "#94A3B8", marginTop: 4 }}>The pill posts the email straight to your form (no iframe, no CORS setup). Submissions land in this form&apos;s target list.</p>
+          </>
+        ) : isEmbed ? (
           <>
             <Block label="① Script embed — recommended (auto-resizes, paste on any site / Shopify)" value={script} copied={copied === "script"} onCopy={() => copy("script", script)} mono />
             <Block label="② iframe (fixed height fallback)" value={iframe} copied={copied === "iframe"} onCopy={() => copy("iframe", iframe)} mono />
             <Block label="Hosted URL (also works as a shareable link)" value={url} copied={copied === "url"} onCopy={() => copy("url", url)} />
+            <p style={{ fontSize: 11, color: "#94A3B8", marginTop: 4 }}>The script embed injects an auto-resizing iframe — no CORS setup needed. Works on Shopify, WordPress, and plain HTML.</p>
           </>
         ) : (
           <>
             <Block label="① Hosted URL — share this link" value={url} copied={copied === "url"} onCopy={() => copy("url", url)} />
             <Block label="② Embed it instead (auto-resizing script)" value={script} copied={copied === "script"} onCopy={() => copy("script", script)} mono />
+            <p style={{ fontSize: 11, color: "#94A3B8", marginTop: 4 }}>The script embed injects an auto-resizing iframe — no CORS setup needed. Works on Shopify, WordPress, and plain HTML.</p>
           </>
         )}
-        <p style={{ fontSize: 11, color: "#94A3B8", marginTop: 4 }}>The script embed injects an auto-resizing iframe — no CORS setup needed. Works on Shopify, WordPress, and plain HTML.</p>
       </div>
     </>
   );

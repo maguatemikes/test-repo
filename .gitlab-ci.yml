@@ -8,17 +8,20 @@ stages:
 cache:
   key:
     files:
-      - package-lock.json
+      - pnpm-lock.yaml
   paths:
-    - .npm/
+    - .pnpm-store/
     - node_modules/
 
 install-and-test:
   image: node:20-alpine
   stage: test
+  before_script:
+    - corepack enable
+    - pnpm config set store-dir .pnpm-store
   script:
-    - npm ci --cache .npm --prefer-offline --no-audit --progress=false
-    - npm run lint
+    - pnpm install --frozen-lockfile
+    - pnpm run lint
 
 deploy-staging:
   stage: deploy

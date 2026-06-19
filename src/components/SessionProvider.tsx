@@ -15,8 +15,7 @@ export interface CurrentUser {
   email: string;
   role?: string;
   avatarUrl?: string;
-  /** Name of the organization the user belongs to (from /api/me's `org`). */
-  orgName?: string;
+  org?: { id?: number; slug?: string; name?: string; status?: string };
 }
 
 interface SessionContextValue {
@@ -57,27 +56,16 @@ function normalize(payload: unknown): CurrentUser | null {
   const email = (u.email as string) ?? "";
   if (!name && !email) return null;
 
-  // `org` sits at the wrapper level (alongside role). Be tolerant of either a
-  // plain string name or an object with a name-ish field.
-  const orgRaw = wrapper.org ?? u.org;
-  let orgName: string | undefined;
-  if (typeof orgRaw === "string") {
-    orgName = orgRaw || undefined;
-  } else if (orgRaw && typeof orgRaw === "object") {
-    const o = orgRaw as Record<string, unknown>;
-    orgName =
-      (o.name as string) ??
-      (o.orgName as string) ??
-      (o.displayName as string) ??
-      undefined;
-  }
+  const orgRaw = wrapper.org && typeof wrapper.org === "object" ? (wrapper.org as Record<string, unknown>) : null;
 
   return {
     name: name || email,
     email,
     role: (wrapper.role as string) ?? (u.role as string) ?? (u.roleName as string) ?? undefined,
     avatarUrl: (u.avatarUrl as string) ?? (u.avatar as string) ?? undefined,
-    orgName,
+    org: orgRaw
+      ? { id: orgRaw.id as number, slug: orgRaw.slug as string, name: orgRaw.name as string, status: orgRaw.status as string }
+      : undefined,
   };
 }
 
