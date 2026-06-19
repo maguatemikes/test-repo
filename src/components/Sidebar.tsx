@@ -48,6 +48,9 @@ export function Sidebar({ active, customerSubTab, onNavigate, onNavigateCustomer
       .map((p) => p[0]?.toUpperCase() ?? "")
       .join("") || "?";
 
+  const orgName = user?.orgName || "Organization";
+  const orgInitial = (user?.orgName?.trim()?.[0] ?? "•").toUpperCase();
+
   return (
     <>
       {/* Backdrop (mobile only) */}
@@ -108,10 +111,10 @@ export function Sidebar({ active, customerSubTab, onNavigate, onNavigateCustomer
             className="rounded flex items-center justify-center text-white"
             style={{ width: 20, height: 20, background: "#7C3AED", fontSize: 10, fontWeight: 600 }}
           >
-            A
+            {orgInitial}
           </div>
-          <span style={{ color: "#CBD5E1", fontSize: 12, fontWeight: 500 }}>Acme Corp</span>
-          <ChevronDown size={12} color="#64748B" className="ml-auto" />
+          <span style={{ color: "#CBD5E1", fontSize: 12, fontWeight: 500 }} className="flex-1 min-w-0 truncate">{orgName}</span>
+          <ChevronDown size={12} color="#64748B" className="shrink-0" />
         </div>
       </div>
 
