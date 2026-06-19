@@ -48,8 +48,8 @@ export function Sidebar({ active, customerSubTab, onNavigate, onNavigateCustomer
       .map((p) => p[0]?.toUpperCase() ?? "")
       .join("") || "?";
 
-  const orgName = user?.orgName || "Organization";
-  const orgInitial = (user?.orgName?.trim()?.[0] ?? "•").toUpperCase();
+  const orgName = user?.org?.name || "Organization";
+  const orgInitial = (user?.org?.name?.trim()?.[0] ?? "•").toUpperCase();
 
   return (
     <>
