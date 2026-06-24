@@ -221,12 +221,22 @@
       return;
     }
 
-    if (d.type === "crm-form-display" && !mode) {
+    if (d.type === "crm-form-display") {
+      // Already armed as a popup, or blocked by targeting → nothing more to do.
+      if (mode === "popup" || mode === "blocked") return;
       var cfg = d.display || {};
       // URL + device gate — if this page doesn't qualify, never reveal the form.
       if (!passesTargeting(d.targeting)) { mode = "blocked"; iframe.style.display = "none"; return; }
-      if (cfg.format === "popup") { mode = "popup"; armPopup(cfg); }
-      else { setInline(); }
+      if (cfg.format === "popup") {
+        // Honor popup even if a slow-load fallback already revealed it inline —
+        // re-hide and arm the popup so a late message still wins (cold incognito).
+        mode = "popup";
+        iframe.style.display = "";
+        iframe.style.visibility = "hidden";
+        armPopup(cfg);
+      } else if (mode !== "inline") {
+        setInline();
+      }
       return;
     }
 
@@ -237,13 +247,11 @@
     }
   });
 
-  // Fallback for OLD form pages that never post a mode. Critically, we wait for
-  // the iframe to actually LOAD first (a cold start can take several seconds),
-  // then give the display message a grace window — otherwise a slow-loading
-  // popup form would wrongly fall back to inline and dump itself into the page.
-  iframe.addEventListener("load", function () {
-    setTimeout(function () { if (!mode) setInline(); }, 3000);
-  });
-  // Absolute backstop in case `load` never fires (generous, for cold loads).
+  // Fallback ONLY for OLD form pages that never post a mode. We do NOT race the
+  // message with a short timer — on a cold (incognito) load, hydration + the
+  // postMessage can take many seconds, and a premature inline fallback would
+  // beat it. The iframe stays hidden until the message arrives; this long
+  // backstop only fires if the form genuinely never reports its mode. (And even
+  // then, a late popup message overrides inline in the handler above.)
   setTimeout(function () { if (!mode) setInline(); }, 30000);
 })();
