@@ -37,6 +37,7 @@
 
   var mode = null; // "inline" | "popup" — locked in on the first display message
   var overlay = null;
+  var panel = null; // the modal card wrapper (animated on open/close)
 
   // ---- frequency capping (per form, on the shopper's browser) ----
   var KEY = "crmform:" + slug;
@@ -73,19 +74,31 @@
     overlay = document.createElement("div");
     overlay.style.cssText =
       "position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;" +
-      "padding:16px;background:rgba(15,23,42,0.55);opacity:0;transition:opacity .18s ease;box-sizing:border-box;";
+      "padding:16px;background:rgba(15,23,42,0.5);opacity:0;transition:opacity .22s ease;box-sizing:border-box;" +
+      "-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);";
     var wrap = document.createElement("div");
-    wrap.style.cssText = "position:relative;width:100%;max-width:" + maxWidth + "px;";
+    panel = wrap;
+    // Starts slightly down + scaled-in; showPopup() animates it to rest for a soft pop.
+    wrap.style.cssText =
+      "position:relative;width:100%;max-width:" + maxWidth + "px;opacity:0;" +
+      "transform:translateY(10px) scale(0.97);transition:transform .28s cubic-bezier(.16,1,.3,1),opacity .28s ease;";
     var close = document.createElement("button");
     close.setAttribute("aria-label", "Close");
-    close.innerHTML = "×";
+    close.innerHTML = "&#10005;"; // thin ✕
     close.style.cssText =
-      "position:absolute;top:-12px;right:-12px;width:28px;height:28px;border-radius:999px;border:none;cursor:pointer;" +
-      "background:#0F172A;color:#fff;font-size:18px;line-height:28px;padding:0;box-shadow:0 2px 8px rgba(0,0,0,.3);z-index:1;";
+      "position:absolute;top:-13px;right:-13px;width:32px;height:32px;border-radius:999px;border:none;cursor:pointer;" +
+      "background:#ffffff;color:#475569;font-size:14px;line-height:32px;font-weight:400;padding:0;" +
+      "box-shadow:0 4px 14px rgba(15,23,42,0.22);z-index:3;transition:transform .12s ease;";
+    close.onmouseenter = function () { close.style.transform = "scale(1.08)"; };
+    close.onmouseleave = function () { close.style.transform = "scale(1)"; };
     close.onclick = hidePopup;
-    // Re-home the iframe inside the modal.
+    // Re-home the iframe inside the modal and frame it as a real card (the form's
+    // own card sits flush inside this white, rounded, shadowed surface).
     iframe.style.visibility = "visible";
     iframe.style.margin = "0";
+    iframe.style.background = "#ffffff";
+    iframe.style.borderRadius = "16px";
+    iframe.style.boxShadow = "0 24px 70px rgba(15,23,42,0.30)";
     wrap.appendChild(close);
     wrap.appendChild(iframe);
     overlay.appendChild(wrap);
@@ -97,15 +110,19 @@
   function showPopup() {
     if (!overlay) buildOverlay();
     overlay.style.display = "flex";
-    // next frame so the opacity transition runs
-    requestAnimationFrame(function () { overlay.style.opacity = "1"; });
+    // next frame so the transitions run (backdrop fade + card pop)
+    requestAnimationFrame(function () {
+      overlay.style.opacity = "1";
+      if (panel) { panel.style.opacity = "1"; panel.style.transform = "none"; }
+    });
     markShown();
     document.addEventListener("keydown", onKey);
   }
   function hidePopup() {
     if (!overlay) return;
     overlay.style.opacity = "0";
-    setTimeout(function () { if (overlay) overlay.style.display = "none"; }, 200);
+    if (panel) { panel.style.opacity = "0"; panel.style.transform = "translateY(10px) scale(0.97)"; }
+    setTimeout(function () { if (overlay) overlay.style.display = "none"; }, 240);
     document.removeEventListener("keydown", onKey);
   }
   function onKey(e) { if (e.key === "Escape") hidePopup(); }
