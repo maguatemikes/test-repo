@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { useDialog } from "@/components/ui/dialogProvider";
 import { renderEmailHtml } from "@/lib/emailRender";
 import { docToHtml, htmlToDoc } from "@/lib/editorSchema";
 import { listTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate, duplicateTemplate, type Template } from "@/lib/templates";
@@ -13,6 +14,7 @@ const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
 const fmtDate = (d?: string | null) => { if (!d) return "—"; const x = new Date(d); return isNaN(+x) ? "—" : x.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); };
 
 export function ContentView() {
+  const dlg = useDialog();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [details, setDetails] = useState<Record<number, Template>>({});
   const [loading, setLoading] = useState(true);
@@ -45,10 +47,10 @@ export function ContentView() {
     setArchiving(true);
     const ok = await deleteTemplate(archiveId);
     setArchiving(false);
-    if (ok) { setArchiveId(null); reload(); } else alert("Archive failed.");
+    if (ok) { setArchiveId(null); reload(); } else dlg.toast("Archive failed.");
   };
   const onDuplicate = async (id: number) => {
-    if (await duplicateTemplate(id)) reload(); else alert("Duplicate failed.");
+    if (await duplicateTemplate(id)) reload(); else dlg.toast("Duplicate failed.");
   };
   const onRename = (id: number, current: string) => { setRenameValue(current); setRenameId(id); };
   const confirmRename = async () => {
@@ -57,7 +59,7 @@ export function ContentView() {
     setRenaming(true);
     const ok = await updateTemplate(renameId, { name });
     setRenaming(false);
-    if (ok) { setRenameId(null); reload(); } else alert("Rename failed.");
+    if (ok) { setRenameId(null); reload(); } else dlg.toast("Rename failed.");
   };
 
   return (
@@ -504,6 +506,7 @@ function StylePanel({ value, onChange }: { value: StyleSettings; onChange: (s: S
 }
 
 function TemplateEditor({ id, seed, onClose, onSaved }: { id: number | null; seed?: QuickStart | null; onClose: () => void; onSaved: (savedId?: number) => void }) {
+  const dlg = useDialog();
   const [name, setName] = useState(seed?.name ?? "");
   const [subject, setSubject] = useState(seed?.subject ?? "");
   const [body, setBody] = useState(seed?.html ?? "");
@@ -572,14 +575,14 @@ function TemplateEditor({ id, seed, onClose, onSaved }: { id: number | null; see
   }, [snapshot, emailHtml, name, subject, docJson, thumbnail, tags, style, currentId, loading]);
 
   const save = async () => {
-    if (!name.trim()) { alert("Template name is required."); return; }
+    if (!name.trim()) { dlg.toast("Template name is required."); return; }
     setBusy(true);
     const payload = { name: name.trim(), subjectDefault: subject.trim(), htmlBody: emailHtml, design: { doc: docJson, thumbnail, tags, style } };
     let ok = false; let savedId = currentId ?? undefined;
     if (currentId != null) { ok = await updateTemplate(currentId, payload); }
     else { const res = await createTemplate(payload); ok = res.ok; savedId = res.id; if (res.id != null) setCurrentId(res.id); }
     setBusy(false);
-    if (ok) { lastSaved.current = snapshot; setSavedState("synced"); onSaved(savedId); } else alert("Save failed.");
+    if (ok) { lastSaved.current = snapshot; setSavedState("synced"); onSaved(savedId); } else dlg.toast("Save failed.");
   };
 
   const wordCount = semantic.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").trim().split(/\s+/).filter(Boolean).length;

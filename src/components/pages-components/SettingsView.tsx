@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useDialog } from "@/components/ui/dialogProvider";
 import { useCurrentUser } from "@/components/SessionProvider";
 
 const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
@@ -97,6 +98,7 @@ const dnsRecords = (detail: Record<string, unknown> | null | undefined): DnsReco
 };
 
 export function SettingsView() {
+  const dlg = useDialog();
   const [activeTab, setActiveTab] = useState("org");
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const showSave = (label = "Changes saved") => { setSaveToast(label); setTimeout(() => setSaveToast(null), 2500); };
@@ -170,7 +172,7 @@ export function SettingsView() {
   const removeMember = async (m: Record<string, unknown>) => {
     const id = memberId(m);
     const who = str(get(m, "name") ?? get(m, "displayName") ?? get(m, "email"), "this member");
-    if (!id || !confirm(`Remove ${who} from the organization? They will lose access immediately.`)) return;
+    if (!id || !(await dlg.confirm({ title: `Remove ${who}?`, message: "They will lose access to the organization immediately.", confirmLabel: "Remove", danger: true }))) return;
     setMemberBusy(id);
     const res = await fetch(`/api/me/org/members/${id}`, { method: "DELETE" });
     setMemberBusy(null);
@@ -180,7 +182,7 @@ export function SettingsView() {
 
   const revokeInvite = async (inv: Record<string, unknown>) => {
     const id = str(get(inv, "id") ?? get(inv, "inviteId"), "");
-    if (!id || !confirm("Revoke this pending invite?")) return;
+    if (!id || !(await dlg.confirm({ title: "Revoke this pending invite?", confirmLabel: "Revoke", danger: true }))) return;
     setMemberBusy(id);
     const res = await fetch(`/api/team/invites/${id}`, { method: "DELETE" });
     setMemberBusy(null);
@@ -244,7 +246,7 @@ export function SettingsView() {
   useEffect(() => { load(activeTab); }, [activeTab, load]);
 
   const del = async (path: string, id: unknown, after: () => void) => {
-    if (!confirm("Delete this item?")) return;
+    if (!(await dlg.confirm({ title: "Delete this item?", confirmLabel: "Delete", danger: true }))) return;
     const res = await fetch(`/api/settings/${path}/${id}`, { method: "DELETE" });
     if (res.ok) { showSave("Deleted"); after(); } else showSave("Delete failed");
   };

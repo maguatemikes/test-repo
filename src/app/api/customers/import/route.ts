@@ -10,10 +10,14 @@ export async function POST(req: Request) {
   const cookie = req.headers.get("cookie") || "";
   const body = await req.json().catch(() => ({}));
   if (!body.csv || typeof body.csv !== "string") return NextResponse.json({ ok: false, error: "csv is required" }, { status: 400 });
+  // Forward listId (attach imported contacts to a list) + duplicateHandling when present.
+  const payload: Record<string, unknown> = { csv: body.csv };
+  if (body.listId != null) payload.listId = body.listId;
+  if (body.duplicateHandling) payload.duplicateHandling = body.duplicateHandling;
   const res = await fetch(`${API_BASE}/customers/import`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(cookie ? { cookie } : {}) },
-    body: JSON.stringify({ csv: body.csv }),
+    body: JSON.stringify(payload),
   });
   const data = await res.json().catch(() => ({}));
   return NextResponse.json(res.ok ? { ok: true, ...data } : { ok: false, error: data.message || "Import failed", ...data }, { status: res.status });

@@ -95,12 +95,66 @@ function block(node: Node, s: EmailStyle, width: number): string {
       return `<img src="${escAttr(src)}" alt="${escAttr(alt)}" width="${cw}" style="display:block;width:100%;max-width:${cw}px;height:auto;border:0;border-radius:8px;margin:4px 0 16px;">`;
     }
     case "DIV":
+      if (el.getAttribute("data-type") === "columns") return columns(el, s, width);
+      if (el.getAttribute("data-type") === "section") return section(el, s, width);
       return Array.from(el.childNodes).map((n) => block(n, s, width)).join("");
     default: {
       const i = inline(el, s);
       return i ? `<p style="${pStyle(s)}">${i}</p>` : "";
     }
   }
+}
+
+/** One column's content. If it contains an image it renders as a product card
+ *  — image flush to the top, name/price/description padded below, card chrome —
+ *  otherwise the blocks render normally. `cw` is the column content width. */
+function columnCell(col: Element, s: EmailStyle, cw: number): string {
+  const img = col.querySelector("img");
+  if (!img) {
+    // Plain column: render each block at the cell width.
+    return Array.from(col.childNodes).map((cn) => block(cn, s, cw + 68)).join("") || "&nbsp;";
+  }
+  // Product card: image at the top (full bleed), the rest of the blocks padded below.
+  const src = img.getAttribute("src") || "";
+  const alt = img.getAttribute("alt") || "";
+  const imgCell = src
+    ? `<tr><td style="padding:0;line-height:0;font-size:0;"><img src="${escAttr(src)}" alt="${escAttr(alt)}" width="${cw}" style="display:block;width:100%;max-width:${cw}px;height:auto;border:0;margin:0;"></td></tr>`
+    : "";
+  // Everything that isn't the image becomes the card body (name, price, etc.).
+  // Force dark text on the light card regardless of the email's theme color.
+  const cardStyle: EmailStyle = { ...s, textColor: "#1A2231" };
+  const bodyBlocks = Array.from(col.children)
+    .filter((c) => c.tagName !== "IMG" && !(c.tagName === "DIV" && c.querySelector("img")))
+    .map((c) => block(c, cardStyle, cw + 68))
+    .join("");
+  const bodyCell = bodyBlocks ? `<tr><td style="padding:12px 16px 16px;">${bodyBlocks}</td></tr>` : "";
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border:1px solid #e3e0da;border-radius:10px;background:#ffffff;overflow:hidden;">${imgCell}${bodyCell}</table>`;
+}
+
+/** A `data-type="section"` block → a full-width colored band with its own
+ *  background + text color (email-safe: color on the <td>). */
+function section(el: HTMLElement, s: EmailStyle, width: number): string {
+  const bg = el.getAttribute("data-bg") || "#f4f4f5";
+  const color = el.getAttribute("data-color") || s.textColor;
+  const inner = Array.from(el.childNodes).map((n) => block(n, { ...s, textColor: color }, width - 8)).join("");
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:0 0 16px;"><tr><td style="background:${bg};border-radius:10px;padding:20px 22px;color:${color};font-family:${s.fontFamily};">${inner || "&nbsp;"}</td></tr></table>`;
+}
+
+/** A `data-type="columns"` wrapper → side-by-side <td> cells (the only column
+ *  layout Gmail/Outlook lay out reliably). Image columns become product cards. */
+function columns(el: HTMLElement, s: EmailStyle, width: number): string {
+  const cols = Array.from(el.children).filter((c) => c.getAttribute("data-type") === "column");
+  const n = cols.length || 1;
+  const gutter = 16;
+  const contentBox = width - 68; // body cell has 34px padding each side
+  const cellW = Math.max(80, Math.floor((contentBox - gutter * (n - 1)) / n));
+  const cells = cols
+    .map((col, i) => {
+      const padRight = i < n - 1 ? `padding-right:${gutter}px;` : "";
+      return `<td width="${cellW}" valign="top" style="width:${cellW}px;${padRight}vertical-align:top;">${columnCell(col, s, cellW)}</td>`;
+    })
+    .join("");
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:0 0 16px;"><tr>${cells}</tr></table>`;
 }
 
 export function renderEmailHtml(html: string, style: EmailStyle): string {

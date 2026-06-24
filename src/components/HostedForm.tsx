@@ -5,7 +5,8 @@ import { useEffect, useRef, useState } from "react";
 const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
 
 type Field = { id?: string; name?: string; type: string; label: string; required?: boolean; options?: string[] };
-type Design = { accentColor?: string; submitText?: string; title?: string; description?: string } | null;
+type Display = { format?: string; trigger?: string; delaySeconds?: number; scrollPercent?: number; frequency?: string; frequencyDays?: number };
+type Design = { accentColor?: string; submitText?: string; title?: string; description?: string; display?: Display } | null;
 type Success = { action?: string; message?: string; redirectUrl?: string } | null;
 
 export function HostedForm({
@@ -42,6 +43,20 @@ export function HostedForm({
     };
   }, [embed, slug, state]);
 
+  // In embed mode, tell the parent embed.js how this form wants to be revealed
+  // (inline vs popup + trigger/frequency), so the loader can wrap the iframe in
+  // a delayed/scroll/exit-triggered modal. Posted a few times so the parent's
+  // listener catches it even if it attaches slightly after the iframe renders.
+  useEffect(() => {
+    if (!embed) return;
+    const display = design?.display ?? { format: "inline" };
+    const post = () => window.parent?.postMessage({ type: "crm-form-display", slug, display }, "*");
+    post();
+    const timers = [120, 400, 1000].map((ms) => window.setTimeout(post, ms));
+    return () => timers.forEach(clearTimeout);
+    // design?.display is stable for a given form render; slug/embed gate it.
+  }, [embed, slug]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const keyFor = (f: Field, i: number) => f.id || f.name || `f${i}`;
   const set = (k: string, v: string | boolean) => setValues((p) => ({ ...p, [k]: v }));
 
@@ -75,6 +90,9 @@ export function HostedForm({
               : `Couldn't submit (error ${res.status}). Please try again.`),
         );
       }
+      // Let the parent embed.js know a signup landed — it closes the popup and
+      // suppresses future shows (don't re-pester someone who already subscribed).
+      if (embed) window.parent?.postMessage({ type: "crm-form-submitted", slug }, "*");
       if (success?.action === "redirect" && success.redirectUrl) {
         window.location.href = success.redirectUrl;
         return;

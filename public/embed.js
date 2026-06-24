@@ -1,6 +1,11 @@
 /* CRM form embed loader.
  * Usage: <script src="https://YOUR-APP/embed.js" data-form="SLUG" data-max-width="460" async></script>
+ *
  * Injects an auto-resizing iframe of the hosted form (no CORS setup needed).
+ * The form reports how it wants to be revealed (inline vs popup + trigger +
+ * frequency) via a postMessage, so this loader can either render it in place or
+ * pop it as a centered modal — armed by a delay, scroll depth, or exit intent —
+ * with localStorage frequency capping so visitors aren't pestered.
  */
 (function () {
   var s = document.currentScript;
@@ -22,15 +27,162 @@
   iframe.style.margin = "0 auto";
   iframe.style.overflow = "hidden";
 
-  // Insert right after the script tag.
-  s.parentNode.insertBefore(iframe, s.nextSibling);
+  // Placeholder marks where an INLINE form should land; a POPUP form is moved
+  // out of the flow into an overlay instead. Insert the iframe hidden until the
+  // form tells us which mode it is (no flash for popups).
+  var anchor = document.createComment("crm-form:" + slug);
+  s.parentNode.insertBefore(anchor, s.nextSibling);
+  iframe.style.visibility = "hidden";
+  anchor.parentNode.insertBefore(iframe, anchor.nextSibling);
 
-  // Auto-resize from height messages posted by the form page.
+  var mode = null; // "inline" | "popup" — locked in on the first display message
+  var overlay = null;
+
+  // ---- frequency capping (per form, on the shopper's browser) ----
+  var KEY = "crmform:" + slug;
+  var SKEY = "crmform-sess:" + slug;
+  function store() { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { return {}; } }
+  function saveStore(o) { try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) {} }
+  function shouldShow(d) {
+    var st = store();
+    if (st.subscribed) return false; // already signed up — never nag again
+    var freq = d.frequency || "session";
+    if (freq === "always") return true;
+    if (freq === "session") { try { return !sessionStorage.getItem(SKEY); } catch (e) { return true; } }
+    if (freq === "once") return !st.shownAt;
+    if (freq === "days") {
+      if (!st.shownAt) return true;
+      var days = Math.max(1, Number(d.frequencyDays) || 7);
+      return Date.now() - st.shownAt > days * 86400000;
+    }
+    return true;
+  }
+  function markShown() {
+    var st = store(); st.shownAt = Date.now(); saveStore(st);
+    try { sessionStorage.setItem(SKEY, "1"); } catch (e) {}
+  }
+  function markSubscribed() { var st = store(); st.subscribed = true; saveStore(st); }
+
+  // ---- inline vs popup setup ----
+  function setInline() {
+    mode = "inline";
+    iframe.style.visibility = "visible";
+  }
+
+  function buildOverlay() {
+    overlay = document.createElement("div");
+    overlay.style.cssText =
+      "position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;" +
+      "padding:16px;background:rgba(15,23,42,0.55);opacity:0;transition:opacity .18s ease;box-sizing:border-box;";
+    var wrap = document.createElement("div");
+    wrap.style.cssText = "position:relative;width:100%;max-width:" + maxWidth + "px;";
+    var close = document.createElement("button");
+    close.setAttribute("aria-label", "Close");
+    close.innerHTML = "×";
+    close.style.cssText =
+      "position:absolute;top:-12px;right:-12px;width:28px;height:28px;border-radius:999px;border:none;cursor:pointer;" +
+      "background:#0F172A;color:#fff;font-size:18px;line-height:28px;padding:0;box-shadow:0 2px 8px rgba(0,0,0,.3);z-index:1;";
+    close.onclick = hidePopup;
+    // Re-home the iframe inside the modal.
+    iframe.style.visibility = "visible";
+    iframe.style.margin = "0";
+    wrap.appendChild(close);
+    wrap.appendChild(iframe);
+    overlay.appendChild(wrap);
+    // Click on the backdrop (not the card) closes.
+    overlay.addEventListener("click", function (e) { if (e.target === overlay) hidePopup(); });
+    document.body.appendChild(overlay);
+  }
+
+  function showPopup() {
+    if (!overlay) buildOverlay();
+    overlay.style.display = "flex";
+    // next frame so the opacity transition runs
+    requestAnimationFrame(function () { overlay.style.opacity = "1"; });
+    markShown();
+    document.addEventListener("keydown", onKey);
+  }
+  function hidePopup() {
+    if (!overlay) return;
+    overlay.style.opacity = "0";
+    setTimeout(function () { if (overlay) overlay.style.display = "none"; }, 200);
+    document.removeEventListener("keydown", onKey);
+  }
+  function onKey(e) { if (e.key === "Escape") hidePopup(); }
+
+  function isTouch() {
+    return ("ontouchstart" in window) || (navigator.maxTouchPoints > 0) ||
+      (window.matchMedia && window.matchMedia("(hover: none)").matches);
+  }
+
+  function armPopup(d) {
+    if (!shouldShow(d)) return; // capped — don't even arm it
+    var trigger = d.trigger || "immediate";
+
+    if (trigger === "immediate") { showPopup(); return; }
+
+    if (trigger === "delay") {
+      var secs = Math.max(0, Number(d.delaySeconds) || 0);
+      setTimeout(showPopup, secs * 1000);
+      return;
+    }
+
+    if (trigger === "scroll") {
+      var pct = Math.max(1, Math.min(100, Number(d.scrollPercent) || 50));
+      var onScroll = function () {
+        var doc = document.documentElement;
+        var scrolled = (doc.scrollTop || document.body.scrollTop);
+        var height = (doc.scrollHeight - doc.clientHeight) || 1;
+        if ((scrolled / height) * 100 >= pct) {
+          window.removeEventListener("scroll", onScroll);
+          showPopup();
+        }
+      };
+      window.addEventListener("scroll", onScroll, { passive: true });
+      return;
+    }
+
+    if (trigger === "exit_intent") {
+      // No mouse on touch devices — fall back to a gentle delay so mobile still converts.
+      if (isTouch()) { setTimeout(showPopup, 12000); return; }
+      var onOut = function (e) {
+        if (e.clientY <= 0 && !e.relatedTarget) {
+          document.removeEventListener("mouseout", onOut);
+          showPopup();
+        }
+      };
+      document.addEventListener("mouseout", onOut);
+      return;
+    }
+
+    showPopup();
+  }
+
+  // ---- messages from the form iframe ----
   window.addEventListener("message", function (e) {
     if (e.origin !== origin) return;
     var d = e.data;
-    if (d && d.type === "crm-form-height" && d.slug === slug && d.height) {
+    if (!d || d.slug !== slug) return;
+
+    if (d.type === "crm-form-height" && d.height) {
       iframe.style.height = d.height + "px";
+      return;
+    }
+
+    if (d.type === "crm-form-display" && !mode) {
+      var cfg = d.display || {};
+      if (cfg.format === "popup") { mode = "popup"; armPopup(cfg); }
+      else { setInline(); }
+      return;
+    }
+
+    if (d.type === "crm-form-submitted") {
+      markSubscribed();
+      if (mode === "popup") setTimeout(hidePopup, 1800); // let them see the success state first
+      return;
     }
   });
+
+  // Fallback: if the form never reports its mode (older form page), show inline.
+  setTimeout(function () { if (!mode) setInline(); }, 2500);
 })();

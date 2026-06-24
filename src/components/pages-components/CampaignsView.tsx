@@ -4,9 +4,10 @@ import {
   Send, Clock, Edit3, Plus, ChevronRight, ChevronLeft, X, Eye, Users,
   ArrowUpRight, MousePointerClick, TrendingDown, DollarSign, Trash2, LayoutTemplate, Pause, Loader2,
 } from "lucide-react";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { useDialog } from "@/components/ui/dialogProvider";
 import {
   listCampaigns, getCampaign, getAnalytics, createCampaign, updateCampaign, deleteCampaign,
   testCampaign, sendCampaign, listAudiences, rates, type Campaign, type CampaignInput, type AudienceOption,
@@ -42,6 +43,44 @@ export function CampaignsView() {
 
   const reload = useCallback(async () => { setLoading(true); setCampaigns(await listCampaigns()); setLoading(false); }, []);
   useEffect(() => { reload(); }, [reload]);
+
+  // Auto-refresh the list while a campaign is mid-send OR a scheduled one is due,
+  // so badges flip Scheduled → Sending → Sent without a manual browser refresh.
+  // `tick` + the wake timer below engage polling exactly when the soonest
+  // future-scheduled send fires (even if the page was left open across that time).
+  const [tick, setTick] = useState(0);
+  const isActive = useMemo(() => {
+    const now = Date.now();
+    return campaigns.some((c) =>
+      c.status === "sending" ||
+      (c.status === "scheduled" && c.scheduledFor != null && new Date(c.scheduledFor).getTime() <= now),
+    );
+  }, [campaigns, tick]);
+  const listPoll = useRef(0);
+  useEffect(() => {
+    if (!isActive) { listPoll.current = 0; return; }
+    listPoll.current = 0;
+    const t = setInterval(() => {
+      listPoll.current += 1;
+      if (listPoll.current > 60) { clearInterval(t); return; } // ~3.5 min safety cap
+      listCampaigns().then(setCampaigns).catch(() => {});
+    }, 3500);
+    return () => clearInterval(t);
+  }, [isActive]);
+  // Idle until a future-scheduled send is due: sleep until the soonest one fires
+  // (re-arming at most every 30 min), then wake so polling kicks in.
+  useEffect(() => {
+    if (isActive) return;
+    const now = Date.now();
+    const soon = campaigns
+      .filter((c) => c.status === "scheduled" && c.scheduledFor != null)
+      .map((c) => new Date(c.scheduledFor as string).getTime())
+      .filter((ms) => ms > now);
+    if (!soon.length) return;
+    const delay = Math.min(Math.min(...soon) - now + 1000, 1_800_000);
+    const w = setTimeout(() => setTick((n) => n + 1), Math.max(delay, 1000));
+    return () => clearTimeout(w);
+  }, [campaigns, tick, isActive]);
 
   if (view === "compose") {
     return <Composer campaignId={editId} onCancel={() => { setView("list"); setEditId(null); }} onDone={() => { setView("list"); setEditId(null); reload(); }} />;
@@ -126,6 +165,7 @@ export function CampaignsView() {
 const STEPS = ["Settings", "Audience", "Content", "Review & Send"];
 
 function Composer({ campaignId, onCancel, onDone }: { campaignId: number | null; onCancel: () => void; onDone: () => void }) {
+  const dlg = useDialog();
   const [id, setId] = useState<number | null>(campaignId);
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
@@ -145,12 +185,12 @@ function Composer({ campaignId, onCancel, onDone }: { campaignId: number | null;
 
   // Ensure a draft exists, then persist the current form.
   const save = async (): Promise<number | null> => {
-    if (!form.name?.trim()) { alert("Campaign name is required."); setStep(1); return null; }
+    if (!form.name?.trim()) { dlg.toast("Campaign name is required."); setStep(1); return null; }
     setBusy(true);
     let cid = id;
     if (cid == null) {
       const res = await createCampaign(form);
-      if (!res.ok || !res.id) { setBusy(false); alert(res.error || "Could not create campaign."); return null; }
+      if (!res.ok || !res.id) { setBusy(false); dlg.toast(res.error || "Could not create campaign."); return null; }
       cid = res.id; setId(cid);
     } else {
       await updateCampaign(cid, form);
@@ -266,7 +306,7 @@ function Composer({ campaignId, onCancel, onDone }: { campaignId: number | null;
               <div className="space-y-2">
                 {templates.map((t) => (
                   <label key={t.id} className="flex items-center gap-3 rounded-lg p-3 cursor-pointer" style={{ border: `1px solid ${form.templateId === t.id ? "#2563EB" : "var(--border)"}`, background: form.templateId === t.id ? "#EFF6FF" : "#FFFFFF" }}>
-                    <input type="radio" name="tpl" checked={form.templateId === t.id} onChange={() => set({ templateId: t.id })} style={{ accentColor: "#2563EB" }} />
+                    <input type="radio" name="tpl" checked={form.templateId === t.id} onChange={() => set({ templateId: t.id, ...(form.subject?.trim() ? {} : { subject: t.subjectDefault || "" }) })} style={{ accentColor: "#2563EB" }} />
                     <div className="rounded flex items-center justify-center" style={{ width: 28, height: 28, background: "#EFF6FF", flexShrink: 0 }}><LayoutTemplate size={14} color="#2563EB" /></div>
                     <div className="flex-1 min-w-0"><p style={{ fontSize: 13, fontWeight: 500, color: "#0F172A" }}>{t.name}</p><p className="truncate" style={{ fontSize: 11, color: "#64748B" }}>{t.subjectDefault}</p></div>
                     {form.templateId === t.id && <span style={{ fontSize: 10, fontWeight: 600, color: "#2563EB" }}>SELECTED</span>}
@@ -330,7 +370,8 @@ function Detail({ id, onBack, onEdit }: { id: number; onBack: () => void; onEdit
   const [loading, setLoading] = useState(true);
   const [testOpen, setTestOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [confirmKind, setConfirmKind] = useState<null | "send" | "delete">(null);
+  const [confirmKind, setConfirmKind] = useState<null | "send" | "delete" | "cancel">(null);
+  const [scheduling, setScheduling] = useState<null | { initial: string | null }>(null);
   const [actionErr, setActionErr] = useState("");
 
   const load = useCallback(async () => { setLoading(true); const [cc, an] = await Promise.all([getCampaign(id), getAnalytics(id)]); setC(cc); setAnalytics(an); setLoading(false); }, [id]);
@@ -339,26 +380,54 @@ function Detail({ id, onBack, onEdit }: { id: number; onBack: () => void; onEdit
   // Silent re-fetch (no loading flash) — used for polling.
   const refresh = useCallback(async () => { const [cc, an] = await Promise.all([getCampaign(id), getAnalytics(id)]); if (cc) setC(cc); setAnalytics(an); }, [id]);
 
-  // While a campaign is "sending", poll until it flips to a terminal status
-  // (sent/failed) so the UI updates without a manual refresh. Capped so a stuck
-  // send doesn't poll forever.
+  // Poll while sending OR a scheduled send is due, so the detail flips
+  // Scheduled → Sending → Sent on its own. A wake timer (below) starts polling
+  // exactly when a future scheduled send fires. Capped against a stuck send.
+  const [tick, setTick] = useState(0);
   const pollCount = useRef(0);
+  const due = useMemo(() => {
+    if (!c) return false;
+    if (c.status === "sending") return true;
+    return c.status === "scheduled" && c.scheduledFor != null && new Date(c.scheduledFor).getTime() <= Date.now();
+  }, [c, tick]);
   useEffect(() => {
-    if (c?.status !== "sending") { pollCount.current = 0; return; }
+    if (!due) { pollCount.current = 0; return; }
     pollCount.current = 0;
     const t = setInterval(() => {
       pollCount.current += 1;
-      if (pollCount.current > 40) { clearInterval(t); return; } // ~2.3 min safety cap
+      if (pollCount.current > 60) { clearInterval(t); return; } // ~3.5 min safety cap
       refresh();
     }, 3500);
     return () => clearInterval(t);
-  }, [c?.status, refresh]);
+  }, [due, refresh]);
+  useEffect(() => {
+    if (!c || c.status !== "scheduled" || c.scheduledFor == null) return;
+    const now = Date.now();
+    const ms = new Date(c.scheduledFor).getTime();
+    if (ms <= now) return;
+    const delay = Math.min(ms - now + 1000, 1_800_000);
+    const w = setTimeout(() => setTick((n) => n + 1), Math.max(delay, 1000));
+    return () => clearTimeout(w);
+  }, [c, tick]);
 
   if (loading) return <div className="p-6" style={{ fontFamily: font, fontSize: 13, color: "#94A3B8" }}>Loading campaign…</div>;
   if (!c) return <div className="p-6" style={{ fontFamily: font }}><EmptyState icon={Send} title="Campaign not found" description="It may have been deleted." action={<button onClick={onBack} className="rounded-lg px-4 py-2" style={{ fontSize: 12, background: "#2563EB", color: "#fff", cursor: "pointer" }}>Back</button>} /></div>;
 
   const s = sc(c.status); const Icon = s.icon; const r = rates(c); const isSent = c.status === "sent";
   const topLinks = (analytics?.topLinks as { url: string; clicks: number; pct: number }[]) || [];
+  type Recip = { id: number; customerId: number; status: string; sentAt: string | null; deliveredAt: string | null; openedAt: string | null; clickedAt: string | null };
+  const recipients = (analytics?.recipients as Recip[]) || [];
+  // Furthest-reached engagement per recipient → a labelled, colour-coded activity.
+  const activityOf = (x: Recip): { label: string; at: string | null; bg: string; color: string } => {
+    if (x.status === "bounced") return { label: "Bounced", at: x.sentAt, bg: "#FFF1F2", color: "#DC2626" };
+    if (x.clickedAt) return { label: "Clicked", at: x.clickedAt, bg: "#F5F3FF", color: "#7C3AED" };
+    if (x.openedAt) return { label: "Opened", at: x.openedAt, bg: "#F0FDF4", color: "#16A34A" };
+    if (x.deliveredAt) return { label: "Delivered", at: x.deliveredAt, bg: "#EFF6FF", color: "#2563EB" };
+    if (x.sentAt) return { label: "Sent", at: x.sentAt, bg: "#F8FAFC", color: "#475569" };
+    return { label: x.status || "—", at: null, bg: "#F8FAFC", color: "#64748B" };
+  };
+  const fmtDT = (d: string | null) => (d ? new Date(d).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—");
+  const engaged = recipients.filter((x) => x.openedAt || x.clickedAt).length;
   const stats = [
     { label: "Recipients", value: num(c.recipientCount), icon: Users, color: "#2563EB", bg: "#EFF6FF" },
     { label: "Open Rate", value: pct1(r.openRate), icon: ArrowUpRight, color: "#16A34A", bg: "#F0FDF4" },
@@ -369,28 +438,37 @@ function Detail({ id, onBack, onEdit }: { id: number; onBack: () => void; onEdit
 
   const onDelete = () => { setActionErr(""); setConfirmKind("delete"); };
   const onSend = () => { setActionErr(""); setConfirmKind("send"); };
+  const onCancelSchedule = () => { setActionErr(""); setConfirmKind("cancel"); };
   const runConfirm = async () => {
     setBusy(true); setActionErr("");
-    const ok = confirmKind === "send" ? await sendCampaign(id, null) : await deleteCampaign(id);
+    const ok = confirmKind === "send" ? await sendCampaign(id, null)
+      : confirmKind === "cancel" ? await updateCampaign(id, { status: "cancelled" })
+      : await deleteCampaign(id);
     setBusy(false);
-    if (!ok) { setActionErr(confirmKind === "send" ? "Send failed. Please try again." : "Delete failed. Please try again."); return; }
+    if (!ok) {
+      setActionErr(confirmKind === "send" ? "Send failed. Please try again." : confirmKind === "cancel" ? "Couldn't cancel the schedule. Try again." : "Delete failed. Please try again.");
+      return;
+    }
     const kind = confirmKind; setConfirmKind(null);
-    if (kind === "send") load(); else onBack();
+    if (kind === "delete") onBack(); else load();
   };
 
   return (
     <div className="p-6 space-y-5" style={{ fontFamily: font }}>
       {testOpen && <SendTestDialog campaignId={id} onClose={() => setTestOpen(false)} />}
+      {scheduling && <ScheduleDialog campaignId={id} initial={scheduling.initial} onClose={() => setScheduling(null)} onDone={() => { setScheduling(null); load(); }} />}
       <ConfirmDialog
         open={confirmKind !== null}
-        title={confirmKind === "delete" ? "Delete campaign?" : "Send this campaign now?"}
+        title={confirmKind === "delete" ? "Delete campaign?" : confirmKind === "cancel" ? "Cancel scheduled send?" : "Send this campaign now?"}
         message={confirmKind === "delete"
           ? `“${c.name}” will be permanently removed. This can’t be undone.`
-          : c.recipientCount > 0
-            ? `“${c.name}” will be sent to its audience (${num(c.recipientCount)} recipient${c.recipientCount === 1 ? "" : "s"}). This can’t be undone.`
-            : `“${c.name}” will be sent to its target audience. This can’t be undone.`}
-        confirmLabel={confirmKind === "delete" ? "Delete" : "Send now"}
-        danger={confirmKind === "delete"}
+          : confirmKind === "cancel"
+            ? `“${c.name}” will go back to a draft and won’t send at ${fmtDate(c.scheduledFor)}.`
+            : c.recipientCount > 0
+              ? `“${c.name}” will be sent to its audience (${num(c.recipientCount)} recipient${c.recipientCount === 1 ? "" : "s"}). This can’t be undone.`
+              : `“${c.name}” will be sent to its target audience. This can’t be undone.`}
+        confirmLabel={confirmKind === "delete" ? "Delete" : confirmKind === "cancel" ? "Cancel send" : "Send now"}
+        danger={confirmKind === "delete" || confirmKind === "cancel"}
         busy={busy}
         onConfirm={runConfirm}
         onCancel={() => { setConfirmKind(null); setActionErr(""); }}
@@ -414,6 +492,9 @@ function Detail({ id, onBack, onEdit }: { id: number; onBack: () => void; onEdit
           <div className="flex gap-2">
             <button onClick={() => setTestOpen(true)} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, background: "#F1F5F9", color: "#374151", border: "1px solid var(--border)", cursor: "pointer", fontFamily: font }}><Send size={12} /> Send Test</button>
             {!isSent && <button onClick={() => onEdit(id)} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, background: "#FFFFFF", color: "#2563EB", border: "1px solid #BFDBFE", cursor: "pointer", fontFamily: font }}><Edit3 size={12} /> Edit</button>}
+            {c.status === "draft" && <button onClick={() => setScheduling({ initial: null })} disabled={busy} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, background: "#FFFFFF", color: "#374151", border: "1px solid var(--border)", cursor: "pointer", fontFamily: font }}><Clock size={12} /> Schedule</button>}
+            {c.status === "scheduled" && <button onClick={() => setScheduling({ initial: c.scheduledFor })} disabled={busy} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, background: "#FFFFFF", color: "#374151", border: "1px solid var(--border)", cursor: "pointer", fontFamily: font }}><Clock size={12} /> Reschedule</button>}
+            {c.status === "scheduled" && <button onClick={onCancelSchedule} disabled={busy} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, background: "#FFFFFF", color: "#DC2626", border: "1px solid var(--border)", cursor: "pointer", fontFamily: font }}><X size={12} /> Cancel</button>}
             {(c.status === "draft" || c.status === "scheduled") && <button onClick={onSend} disabled={busy} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, background: "#16A34A", color: "#FFFFFF", border: "none", cursor: "pointer", fontFamily: font }}><Send size={12} /> Send now</button>}
             <button onClick={onDelete} disabled={busy} className="flex items-center gap-1.5 rounded-lg px-3 py-2" style={{ fontSize: 12, background: "#FFFFFF", color: "#DC2626", border: "1px solid var(--border)", cursor: "pointer", fontFamily: font }}><Trash2 size={12} /></button>
           </div>
@@ -438,6 +519,41 @@ function Detail({ id, onBack, onEdit }: { id: number; onBack: () => void; onEdit
                     <div className="rounded-full overflow-hidden" style={{ height: 4, background: "#F1F5F9" }}><div className="rounded-full" style={{ height: "100%", width: `${l.pct}%`, background: "#2563EB" }} /></div></div>
                 ))}</div>}
           </div>
+
+          <div className="rounded-xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
+            <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: "1px solid var(--border)", background: "#F8FAFC" }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>Recipient Activity</p>
+              <span style={{ fontSize: 11, color: "#64748B" }}>{engaged} engaged · {num(recipients.length)} recipients</span>
+            </div>
+            {recipients.length === 0 ? (
+              <p style={{ fontSize: 12, color: "#94A3B8", padding: "20px" }}>No recipient activity yet.</p>
+            ) : (
+              <div className="overflow-x-auto"><table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ background: "#F8FAFC", borderBottom: "1px solid var(--border)" }}>
+                    {["Contact", "Activity", "When"].map((h) => (
+                      <th key={h} style={{ textAlign: "left", fontSize: 10, fontWeight: 600, color: "#64748B", letterSpacing: "0.04em", padding: "8px 20px" }}>{h.toUpperCase()}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {recipients.slice(0, 50).map((x, i) => { const a = activityOf(x); return (
+                    <tr key={x.id} style={{ borderBottom: i < Math.min(recipients.length, 50) - 1 ? "1px solid #F8FAFC" : "none" }}>
+                      <td style={{ padding: "10px 20px", fontSize: 12, color: "#0F172A" }}>Contact #{x.customerId}</td>
+                      <td style={{ padding: "10px 20px" }}><span className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, background: a.bg, color: a.color }}>{a.label}</span></td>
+                      <td style={{ padding: "10px 20px", fontSize: 11, color: "#64748B", fontFamily: "JetBrains Mono, monospace" }}>{fmtDT(a.at)}</td>
+                    </tr>
+                  ); })}
+                </tbody>
+              </table></div>
+            )}
+            {recipients.length > 0 && engaged === 0 && (
+              <p style={{ fontSize: 11, color: "#94A3B8", padding: "8px 20px", borderTop: "1px solid #F8FAFC" }}>Opens &amp; clicks will appear here once tracking events arrive (Mailtrap webhooks).</p>
+            )}
+            {recipients.length > 50 && (
+              <p style={{ fontSize: 11, color: "#94A3B8", padding: "8px 20px", borderTop: "1px solid #F8FAFC" }}>Showing first 50 of {num(recipients.length)} recipients.</p>
+            )}
+          </div>
         </>
       ) : (
         <div className="rounded-xl p-8 text-center" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
@@ -449,17 +565,59 @@ function Detail({ id, onBack, onEdit }: { id: number; onBack: () => void; onEdit
   );
 }
 
+function ScheduleDialog({ campaignId, initial, onClose, onDone }: { campaignId: number; initial: string | null; onClose: () => void; onDone: () => void }) {
+  const toLocalInput = (iso: string | null) => {
+    const d = iso ? new Date(iso) : new Date(Date.now() + 60 * 60 * 1000); // default +1h
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  };
+  const minInput = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  const [when, setWhen] = useState(toLocalInput(initial));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const submit = async () => {
+    const ts = new Date(when).getTime();
+    if (!when || Number.isNaN(ts)) { setErr("Pick a date and time."); return; }
+    if (ts <= Date.now()) { setErr("Pick a time in the future."); return; }
+    setBusy(true); setErr("");
+    const iso = new Date(when).toISOString();
+    // From draft → POST send with a future sendAt; already scheduled → PATCH the time.
+    const ok = initial ? await updateCampaign(campaignId, { scheduledFor: iso }) : await sendCampaign(campaignId, iso);
+    setBusy(false);
+    if (!ok) { setErr("Couldn't schedule. Please try again."); return; }
+    onDone();
+  };
+  return (
+    <div onClick={onClose} className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(15,23,42,0.4)" }}>
+      <div onClick={(e) => e.stopPropagation()} className="rounded-xl" style={{ background: "#FFFFFF", width: 400, maxWidth: "90vw", padding: 20, fontFamily: font }}>
+        <div className="flex items-center justify-between mb-1">
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: "#0F172A" }}>{initial ? "Reschedule send" : "Schedule send"}</h3>
+          <button onClick={onClose} style={{ color: "#94A3B8", cursor: "pointer" }}><X size={16} /></button>
+        </div>
+        <p style={{ fontSize: 12, color: "#64748B", marginBottom: 14 }}>The campaign sends automatically at the time you pick (your local time).</p>
+        <input type="datetime-local" value={when} min={minInput} onChange={(e) => setWhen(e.target.value)}
+          style={{ width: "100%", fontSize: 13, padding: "8px 12px", border: "1px solid var(--border)", borderRadius: 6, outline: "none", color: "#0F172A", boxSizing: "border-box", fontFamily: font }} />
+        {err && <p style={{ fontSize: 12, color: "#DC2626", marginTop: 8 }}>{err}</p>}
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={onClose} disabled={busy} style={{ fontSize: 12, fontWeight: 500, color: "#64748B", background: "#F1F5F9", border: "none", padding: "8px 14px", borderRadius: 6, cursor: "pointer" }}>Cancel</button>
+          <button onClick={submit} disabled={busy} style={{ fontSize: 12, fontWeight: 500, color: "#FFFFFF", background: "#2563EB", border: "none", padding: "8px 16px", borderRadius: 6, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1 }}>{busy ? "Scheduling…" : initial ? "Reschedule" : "Schedule"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SendTestDialog({ campaignId, onClose }: { campaignId: number; onClose: () => void }) {
+  const dlg = useDialog();
   const [emails, setEmails] = useState("");
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const send = async () => {
     const list = emails.split(",").map((e) => e.trim()).filter((e) => e.includes("@"));
-    if (list.length === 0) { alert("Enter at least one email."); return; }
+    if (list.length === 0) { dlg.toast("Enter at least one email."); return; }
     setBusy(true);
     const ok = await testCampaign(campaignId, list);
     setBusy(false);
-    if (ok) setSent(true); else alert("Test send failed.");
+    if (ok) setSent(true); else dlg.toast("Test send failed.");
   };
   return (
     <div onClick={onClose} className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(15,23,42,0.4)" }}>

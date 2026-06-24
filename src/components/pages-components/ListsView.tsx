@@ -1,10 +1,11 @@
 "use client";
 
-import { List, Plus, MoreHorizontal, Upload, Download, Trash2, Search, X, ChevronLeft } from "lucide-react";
+import { List, Plus, Pencil, Upload, Download, Trash2, Search, X, ChevronLeft, MoreVertical } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { ImportCsvModal } from "../ImportCsvModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { useDialog } from "@/components/ui/dialogProvider";
 
 const SkBar = ({ w, h = 12, r = 6 }: { w: number; h?: number; r?: number }) => (
   <div className="animate-pulse" style={{ width: w, height: h, borderRadius: r, background: "#E2E8F0", flexShrink: 0 }} />
@@ -29,6 +30,7 @@ interface ListsViewProps {
 }
 
 export function ListsView({ }: ListsViewProps) {
+  const dlg = useDialog();
   const [lists, setLists] = useState<ListRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [openList, setOpenList] = useState<number | null>(null);
@@ -50,6 +52,14 @@ export function ListsView({ }: ListsViewProps) {
   // Delete-list confirm
   const [confirmTarget, setConfirmTarget] = useState<{ id: number; name: string } | null>(null);
   const [removing, setRemoving] = useState(false);
+
+  // Rename-list modal
+  const [renameTarget, setRenameTarget] = useState<{ id: number; name: string } | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
+
+  // Kebab (⋮) row-action menu — fixed-positioned so it isn't clipped by the table's overflow.
+  const [menu, setMenu] = useState<{ id: number; x: number; y: number } | null>(null);
 
   const loadLists = useCallback(() => {
     setLoading(true);
@@ -79,7 +89,7 @@ export function ListsView({ }: ListsViewProps) {
     const res = await fetch("/api/lists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
     const d = await res.json().catch(() => ({}));
     setNewBusy(false);
-    if (d.ok) { setNewOpen(false); setNewName(""); loadLists(); } else alert(d.error || "Failed to create list");
+    if (d.ok) { setNewOpen(false); setNewName(""); loadLists(); } else dlg.toast(d.error || "Failed to create list");
   };
 
   const doRemoveList = async () => {
@@ -88,7 +98,23 @@ export function ListsView({ }: ListsViewProps) {
     const res = await fetch(`/api/lists?id=${confirmTarget.id}`, { method: "DELETE" });
     const d = await res.json().catch(() => ({}));
     setRemoving(false);
-    if (d.ok) { if (openList === confirmTarget.id) setOpenList(null); setConfirmTarget(null); loadLists(); } else alert(d.error || "Failed to delete");
+    if (d.ok) { if (openList === confirmTarget.id) setOpenList(null); setConfirmTarget(null); loadLists(); } else dlg.toast(d.error || "Failed to delete");
+  };
+
+  // Export a list's members as CSV (crm-api GET /customers/export?listId → attachment).
+  const exportList = (id: number) => {
+    const a = document.createElement("a");
+    a.href = `/api/customers/export?listId=${id}`;
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+
+  const doRename = async () => {
+    if (!renameTarget || !renameName.trim()) return;
+    setRenameBusy(true);
+    const res = await fetch(`/api/lists?id=${renameTarget.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: renameName.trim() }) });
+    const d = await res.json().catch(() => ({}));
+    setRenameBusy(false);
+    if (d.ok) { setRenameTarget(null); loadLists(); } else dlg.toast(d.error || "Failed to rename");
   };
 
   const searchAdd = (q: string) => {
@@ -104,14 +130,14 @@ export function ListsView({ }: ListsViewProps) {
     if (!openList) return;
     const res = await fetch("/api/lists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "add", listId: openList, customerId }) });
     const d = await res.json();
-    if (d.ok) { setAddQuery(""); setAddResults([]); loadMembers(openList); loadLists(); } else alert(d.error || "Failed to add");
+    if (d.ok) { setAddQuery(""); setAddResults([]); loadMembers(openList); loadLists(); } else dlg.toast(d.error || "Failed to add");
   };
 
   const removeMemberFromList = async (customerId: number) => {
     if (!openList) return;
     const res = await fetch("/api/lists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "remove", listId: openList, customerId }) });
     const d = await res.json();
-    if (d.ok) { loadMembers(openList); loadLists(); } else alert(d.error || "Failed to remove");
+    if (d.ok) { loadMembers(openList); loadLists(); } else dlg.toast(d.error || "Failed to remove");
   };
 
   const selectedList = lists.find((l) => l.id === openList);
@@ -135,7 +161,7 @@ export function ListsView({ }: ListsViewProps) {
           </div>
           <div className="flex gap-2">
             {csvModalOpen && (
-              <ImportCsvModal onClose={() => setCsvModalOpen(false)} context="list" listName={selectedList.name} />
+              <ImportCsvModal onClose={() => setCsvModalOpen(false)} context="list" listName={selectedList.name} listId={selectedList.id} onImported={() => { loadMembers(selectedList.id); loadLists(); }} />
             )}
             <button onClick={() => setCsvModalOpen(true)} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5" style={{ fontSize: 12, border: "1px solid var(--border)", color: "#64748B", background: "#FFFFFF", cursor: "pointer" }}>
               <Upload size={12} /> Import CSV
@@ -251,6 +277,47 @@ export function ListsView({ }: ListsViewProps) {
         onConfirm={doRemoveList}
         onCancel={() => setConfirmTarget(null)}
       />
+      {renameTarget && (
+        <div onClick={() => setRenameTarget(null)} className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(15,23,42,0.4)" }}>
+          <div onClick={(e) => e.stopPropagation()} className="rounded-xl" style={{ background: "#FFFFFF", width: 400, maxWidth: "90vw", padding: 20, fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif" }}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 style={{ fontSize: 15, fontWeight: 600, color: "#0F172A" }}>Rename list</h3>
+              <button onClick={() => setRenameTarget(null)} style={{ color: "#94A3B8", cursor: "pointer" }}><X size={16} /></button>
+            </div>
+            <p style={{ fontSize: 12, color: "#64748B", marginBottom: 14 }}>Update the list name.</p>
+            <input autoFocus value={renameName} onChange={(e) => setRenameName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") doRename(); }} placeholder="List name"
+              style={{ width: "100%", fontSize: 13, padding: "8px 12px", border: "1px solid var(--border)", borderRadius: 6, outline: "none", color: "#0F172A", boxSizing: "border-box" }} />
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setRenameTarget(null)} disabled={renameBusy} style={{ fontSize: 12, fontWeight: 500, color: "#64748B", background: "#F1F5F9", border: "none", padding: "8px 14px", borderRadius: 6, cursor: "pointer" }}>Cancel</button>
+              <button onClick={doRename} disabled={renameBusy || !renameName.trim()} style={{ fontSize: 12, fontWeight: 500, color: "#FFFFFF", background: "#2563EB", border: "none", padding: "8px 16px", borderRadius: 6, cursor: renameBusy || !renameName.trim() ? "not-allowed" : "pointer", opacity: renameBusy || !renameName.trim() ? 0.6 : 1 }}>{renameBusy ? "Saving…" : "Save"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {menu && (() => {
+        const lst = lists.find((x) => x.id === menu.id);
+        if (!lst) return null;
+        const itemStyle = { display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "7px 9px", fontSize: 12, borderRadius: 6, background: "transparent", cursor: "pointer", textAlign: "left" as const };
+        return (
+          <>
+            <div onClick={() => setMenu(null)} style={{ position: "fixed", inset: 0, zIndex: 60 }} />
+            <div onClick={(e) => e.stopPropagation()} style={{ position: "fixed", top: menu.y + 4, left: menu.x - 156, zIndex: 61, background: "#FFFFFF", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 8px 28px rgba(15,23,42,0.14)", padding: 4, width: 156, fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif" }}>
+              <button style={{ ...itemStyle, color: "#374151" }} onClick={() => { setMenu(null); exportList(lst.id); }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#F8FAFC")} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                <Download size={13} /> Export CSV
+              </button>
+              <button style={{ ...itemStyle, color: "#374151" }} onClick={() => { setMenu(null); setRenameTarget({ id: lst.id, name: lst.name }); setRenameName(lst.name); }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#F8FAFC")} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                <Pencil size={13} /> Rename
+              </button>
+              <button style={{ ...itemStyle, color: "#DC2626" }} onClick={() => { setMenu(null); setConfirmTarget({ id: lst.id, name: lst.name }); }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#FEF2F2")} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                <Trash2 size={13} /> Delete
+              </button>
+            </div>
+          </>
+        );
+      })()}
       {newOpen && (
         <div onClick={() => setNewOpen(false)} className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(15,23,42,0.4)" }}>
           <div onClick={(e) => e.stopPropagation()} className="rounded-xl" style={{ background: "#FFFFFF", width: 400, maxWidth: "90vw", padding: 20, fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif" }}>
@@ -347,11 +414,10 @@ export function ListsView({ }: ListsViewProps) {
                   <td style={{ padding: "11px 14px", fontSize: 11, color: "#64748B" }}>{l.created}</td>
                   <td style={{ padding: "11px 14px", fontSize: 11, color: "#64748B" }}>{l.updated}</td>
                   <td style={{ padding: "11px 14px" }}>
-                    <div className="flex items-center gap-1">
-                      <button style={{ color: "#94A3B8" }} onClick={(e) => e.stopPropagation()} title="Export"><Download size={13} /></button>
-                      <button style={{ color: "#94A3B8" }} onClick={(e) => { e.stopPropagation(); setConfirmTarget({ id: l.id, name: l.name }); }} title="Delete list"><Trash2 size={13} /></button>
-                      <button style={{ color: "#94A3B8" }} onClick={(e) => e.stopPropagation()}><MoreHorizontal size={13} /></button>
-                    </div>
+                    <button title="Actions" style={{ color: "#94A3B8", padding: 2 }}
+                      onClick={(e) => { e.stopPropagation(); const b = e.currentTarget.getBoundingClientRect(); setMenu(menu?.id === l.id ? null : { id: l.id, x: b.right, y: b.bottom }); }}>
+                      <MoreVertical size={15} />
+                    </button>
                   </td>
                 </tr>
               );

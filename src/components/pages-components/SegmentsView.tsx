@@ -3,6 +3,7 @@
 import { Filter, Plus, ChevronLeft, RefreshCw, Copy, Archive, MoreHorizontal, Search, Eye, Play, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import { useState, useEffect } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useDialog } from "@/components/ui/dialogProvider";
 
 type SegRow = { id: string; name: string; rules: string[]; count: number; status: string };
 type Member = { name: string; email: string; spend: string; lastOrder: string };
@@ -28,23 +29,33 @@ const statusConfig: Record<string, { bg: string; color: string; dot: string; lab
 };
 
 // ---------- rule-tree model (UI side) ----------
-const FACETS = ["Total Revenue", "Customer LTV", "Total Orders", "Last Order Date", "Created Date", "Source", "Last Engagement"];
-const OPS = [">", "<", "=", ">=", "<=", "within last", "not within", "is", "is not"];
+const FACETS = ["Total Revenue", "Customer LTV", "Total Orders", "Last Order Date", "Created Date", "Source", "Last Engagement", "Channel", "Subscribed", "Tag"];
+const OPS = [">", "<", "=", ">=", "<=", "within last", "not within", "is", "is not", "has", "not has"];
+
+// Operators that make sense per facet — keeps invalid combos out of the dropdown.
+const OPS_FOR: Record<string, string[]> = {
+  "Total Revenue": [">", "<", "=", ">=", "<="], "Customer LTV": [">", "<", "=", ">=", "<="], "Total Orders": [">", "<", "=", ">=", "<="],
+  "Last Order Date": ["within last", "not within"], "Created Date": ["within last", "not within"], "Last Engagement": ["within last", "not within"],
+  "Source": ["is", "is not"], "Channel": ["is", "is not"], "Subscribed": ["is"], "Tag": ["has", "not has"],
+};
+const opsFor = (facet: string) => OPS_FOR[facet] || OPS;
 
 const FACET_FIELD: Record<string, string> = {
   "Total Revenue": "lifetime_spend", "Customer LTV": "lifetime_spend", "Total Orders": "order_count",
   "Last Order Date": "last_order_at", "Created Date": "created_at", "Source": "source", "Last Engagement": "last_engagement_at",
+  "Channel": "channel", "Subscribed": "is_subscribed", "Tag": "tag",
 };
 const OP_MAP: Record<string, string> = {
   ">": "gt", "<": "lt", "=": "eq", ">=": "gte", "<=": "lte",
-  "within last": "within_days", "not within": "older_than_days", "is": "eq", "is not": "ne",
+  "within last": "within_days", "not within": "older_than_days", "is": "eq", "is not": "ne", "has": "has", "not has": "not_has",
 };
 const FIELD_FACET: Record<string, string> = {
   lifetime_spend: "Total Revenue", order_count: "Total Orders", last_order_at: "Last Order Date",
   created_at: "Created Date", source: "Source", last_engagement_at: "Last Engagement",
+  channel: "Channel", is_subscribed: "Subscribed", tag: "Tag",
 };
 const OPCODE_SYMBOL: Record<string, string> = {
-  gt: ">", lt: "<", eq: "=", gte: ">=", lte: "<=", within_days: "within last", older_than_days: "not within", ne: "is not",
+  gt: ">", lt: "<", eq: "=", gte: ">=", lte: "<=", within_days: "within last", older_than_days: "not within", ne: "is not", has: "has", not_has: "not has",
 };
 
 type CondNode = { id: number; kind: "cond"; facet: string; op: string; value: string };
@@ -56,7 +67,7 @@ const uid = () => _uid++;
 const newCond = (): CondNode => ({ id: uid(), kind: "cond", facet: "Total Revenue", op: ">", value: "500" });
 const newGroup = (): GroupNode => ({ id: uid(), kind: "group", op: "AND", children: [newCond()] });
 
-type ApiRule = { field: string; op: string; value: string | number };
+type ApiRule = { field: string; op: string; value: string | number | boolean };
 type ApiGroup = { op: "AND" | "OR"; rules: (ApiRule | ApiGroup)[] };
 
 /** UI tree → API rule_definition. */
@@ -67,9 +78,10 @@ function treeToRule(node: TreeNode): ApiGroup | ApiRule | null {
   const field = FACET_FIELD[node.facet];
   const op = OP_MAP[node.op];
   if (!field || !op) return null;
-  let value: string | number;
+  let value: string | number | boolean;
   if (op === "within_days" || op === "older_than_days") value = parseInt(String(node.value), 10) || 0;
-  else if (field === "source") value = String(node.value).trim();
+  else if (field === "is_subscribed") value = node.value !== "false";
+  else if (field === "source" || field === "channel" || field === "tag") value = String(node.value).trim();
   else { const n = Number(node.value); value = Number.isNaN(n) ? String(node.value) : n; }
   return { field, op, value };
 }
@@ -92,16 +104,37 @@ const selStyle = (flex: number): React.CSSProperties => ({ fontSize: 12, padding
 
 // ---------- recursive editors ----------
 function ConditionRow({ node, onChange, onRemove }: { node: CondNode; onChange: (n: CondNode) => void; onRemove: () => void }) {
+  const ops = opsFor(node.facet);
+  const op = ops.includes(node.op) ? node.op : ops[0];
+  const isBool = node.facet === "Subscribed";
+  const changeFacet = (f: string) => {
+    const o = opsFor(f);
+    onChange({ ...node, facet: f, op: o.includes(node.op) ? node.op : o[0], value: f === "Subscribed" ? "true" : node.value });
+  };
   return (
     <div className="flex items-center gap-2">
-      <select value={node.facet} onChange={(e) => onChange({ ...node, facet: e.target.value })} style={selStyle(2)}>
-        {FACETS.map((f) => <option key={f}>{f}</option>)}
+      <select value={node.facet} onChange={(e) => changeFacet(e.target.value)} style={selStyle(2)}>
+        {FACETS.map((f) =>
+          // Channel isn't backed by the crm-api segment evaluator yet (every value,
+          // incl. "is not", materializes to 0), so disable it to stop users building
+          // silently-empty segments. Flip back on once the backend field is wired.
+          f === "Channel"
+            ? <option key={f} value={f} disabled>Channel (coming soon)</option>
+            : <option key={f}>{f}</option>)}
       </select>
-      <select value={node.op} onChange={(e) => onChange({ ...node, op: e.target.value })} style={selStyle(1)}>
-        {OPS.map((o) => <option key={o}>{o}</option>)}
+      <select value={op} onChange={(e) => onChange({ ...node, op: e.target.value })} style={selStyle(1)}>
+        {ops.map((o) => <option key={o}>{o}</option>)}
       </select>
-      <input value={node.value} onChange={(e) => onChange({ ...node, value: e.target.value })}
-        style={{ fontSize: 12, padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 6, flex: 1.5 }} />
+      {isBool ? (
+        <select value={node.value === "false" ? "false" : "true"} onChange={(e) => onChange({ ...node, value: e.target.value })} style={selStyle(1.5)}>
+          <option value="true">Subscribed</option>
+          <option value="false">Not subscribed</option>
+        </select>
+      ) : (
+        <input value={node.value} onChange={(e) => onChange({ ...node, value: e.target.value })}
+          placeholder={node.facet === "Tag" ? "tag name" : node.facet === "Channel" ? "e.g. email" : ""}
+          style={{ fontSize: 12, padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 6, flex: 1.5 }} />
+      )}
       <button onClick={onRemove} title="Remove condition" style={{ color: "#94A3B8", flexShrink: 0, cursor: "pointer" }}><Trash2 size={13} /></button>
     </div>
   );
@@ -157,6 +190,7 @@ function RuleGroupEditor({ node, onChange, onRemove, isRoot }: { node: GroupNode
 
 // ---------- main view ----------
 export function SegmentsView() {
+  const dlg = useDialog();
   const [openSegment, setOpenSegment] = useState<string | null>(null);
   const [builder, setBuilder] = useState<null | { initial?: { id: string; name: string; tree: TreeNode } }>(null);
   const [query, setQuery] = useState("");
@@ -188,7 +222,7 @@ export function SegmentsView() {
     if (d?.ok) {
       setOpenSegment(null);
       setBuilder({ initial: { id: d.segment.id, name: d.segment.name, tree: ruleToTree(d.segment.rule) } });
-    } else alert("Could not load segment for editing");
+    } else dlg.toast("Could not load segment for editing");
   };
 
   const selectedSegment = segments.find((s) => s.id === openSegment);
@@ -394,6 +428,7 @@ export function SegmentsView() {
 
 // ---------- builder (create + edit) ----------
 function SegmentBuilder({ onBack, onSaved, initial }: { onBack: () => void; onSaved: () => void; initial?: { id: string; name: string; tree: TreeNode } }) {
+  const dlg = useDialog();
   const [name, setName] = useState(initial?.name || "");
   const [tree, setTree] = useState<GroupNode>(() => {
     const t = initial?.tree;
@@ -428,7 +463,7 @@ function SegmentBuilder({ onBack, onSaved, initial }: { onBack: () => void; onSa
       if (editId) body.id = editId;
       const res = await fetch("/api/segments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = await res.json();
-      if (d.ok) onSaved(); else alert(d.error || "Failed to save segment");
+      if (d.ok) onSaved(); else dlg.toast(d.error || "Failed to save segment");
     } finally { setSaving(false); }
   };
 

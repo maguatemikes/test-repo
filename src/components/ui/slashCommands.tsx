@@ -5,7 +5,8 @@ import Suggestion from "@tiptap/suggestion";
 import { ReactRenderer } from "@tiptap/react";
 import tippy, { type Instance } from "tippy.js";
 import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
-import { Heading1, Heading2, Heading3, List, ListOrdered, Quote, Minus, Type, type LucideIcon } from "lucide-react";
+import { Heading1, Heading2, Heading3, List, ListOrdered, Quote, Minus, Type, Columns2, Columns3, Braces, Palette, type LucideIcon } from "lucide-react";
+import { MERGE_FIELDS } from "@/components/ui/mergeTag";
 
 type Item = { title: string; icon: LucideIcon; command: (p: { editor: Editor; range: Range }) => void };
 
@@ -18,6 +19,15 @@ const ITEMS: Item[] = [
   { title: "Numbered list", icon: ListOrdered, command: ({ editor, range }) => editor.chain().focus().deleteRange(range).toggleOrderedList().run() },
   { title: "Quote", icon: Quote, command: ({ editor, range }) => editor.chain().focus().deleteRange(range).toggleBlockquote().run() },
   { title: "Divider", icon: Minus, command: ({ editor, range }) => editor.chain().focus().deleteRange(range).setHorizontalRule().run() },
+  { title: "Two columns", icon: Columns2, command: ({ editor, range }) => editor.chain().focus().deleteRange(range).setColumns(2).run() },
+  { title: "Three columns", icon: Columns3, command: ({ editor, range }) => editor.chain().focus().deleteRange(range).setColumns(3).run() },
+  { title: "Color section", icon: Palette, command: ({ editor, range }) => editor.chain().focus().deleteRange(range).setSection().run() },
+  ...MERGE_FIELDS.map((f) => ({
+    title: f.label,
+    icon: Braces,
+    command: ({ editor, range }: { editor: Editor; range: Range }) =>
+      editor.chain().focus().deleteRange(range).insertMergeTag(f.field).run(),
+  })),
 ];
 
 const font = "Helvetica Neue, Helvetica, Arial, sans-serif";

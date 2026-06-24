@@ -98,6 +98,26 @@ export async function POST(req: Request) {
   }
 }
 
+/** PATCH /api/lists?id={id} → crm-api PATCH /lists/{id} (rename / edit description). */
+export async function PATCH(req: Request) {
+  if (!API_BASE) return NextResponse.json({ ok: false, error: "Not configured" }, { status: 503 });
+  const cookie = req.headers.get("cookie") || "";
+  try {
+    const id = Number(new URL(req.url).searchParams.get("id"));
+    if (!id) return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const patch: Record<string, unknown> = {};
+    if (typeof body.name === "string") patch.name = body.name.trim();
+    if (typeof body.description === "string") patch.description = body.description;
+    if (patch.name === "") return NextResponse.json({ ok: false, error: "A list name is required" }, { status: 400 });
+    const res = await api(cookie, `/lists/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); return NextResponse.json({ ok: false, error: e.message || "Update failed" }, { status: res.status }); }
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 502 });
+  }
+}
+
 export async function DELETE(req: Request) {
   if (!API_BASE) return NextResponse.json({ ok: false, error: "Not configured" }, { status: 503 });
   const cookie = req.headers.get("cookie") || "";

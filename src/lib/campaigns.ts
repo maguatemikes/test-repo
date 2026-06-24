@@ -40,6 +40,7 @@ export type CampaignInput = {
   excludeSegmentId?: number | null;
   templateId?: number | null;
   scheduledFor?: string | null;
+  status?: string;
 };
 
 const rows = (d: unknown): Campaign[] => (Array.isArray(d) ? d : (((d as { rows?: Campaign[] })?.rows) ?? []));

@@ -8,10 +8,15 @@ import { generateHTML, generateJSON, type JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import { ImageWithDelete } from "@/components/ui/imageNode";
+import { Columns, Column } from "@/components/ui/columns";
+import { MergeTag } from "@/components/ui/mergeTag";
+import { Section } from "@/components/ui/section";
 
 // Schema-defining extensions only (the nodes/marks a doc can contain). Behavior
 // plugins (drag handle, slash menu, auto-joiner) add no schema, so they're omitted.
-export const CONTENT_EXTENSIONS = [StarterKit, Link, ImageWithDelete];
+// Every custom node (Columns/Column, MergeTag, Section) MUST be here too —
+// otherwise generateHTML throws on a doc that uses it and htmlBody saves empty.
+export const CONTENT_EXTENSIONS = [StarterKit, Link, ImageWithDelete, Columns, Column, MergeTag, Section];
 
 export function docToHtml(doc: unknown): string {
   if (!doc || typeof doc !== "object") return "";

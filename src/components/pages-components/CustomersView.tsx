@@ -4,6 +4,7 @@ import { Search, Upload, Download, MoreHorizontal, Star, AlertTriangle, UserPlus
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useDialog } from "@/components/ui/dialogProvider";
 import { ListsView } from "./ListsView";
 import { SegmentsView } from "./SegmentsView";
 import { ImportCsvModal } from "../ImportCsvModal";
@@ -131,7 +132,7 @@ const CUSTOMER_COLUMNS: { key: string; label: string; render: (c: CRow) => React
 ];
 const HIDEABLE_COLUMNS = CUSTOMER_COLUMNS.filter((c) => c.key !== "name");
 
-function CustomerDrawer({ customer, onClose }: { customer: typeof mockCustomers[0]; onClose: () => void }) {
+function CustomerDrawer({ customer, onClose, onTagsChanged }: { customer: typeof mockCustomers[0]; onClose: () => void; onTagsChanged?: () => void }) {
   const [drawerTab, setDrawerTab] = useState<DrawerTab>("overview");
   const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
   const [orders, setOrders] = useState<{ id: number; orderNumber: string; total: number; status: string; date: string | null; itemCount: number; channel: string | null }[]>([]);
@@ -159,11 +160,11 @@ function CustomerDrawer({ customer, onClose }: { customer: typeof mockCustomers[
   useEffect(() => { reloadCustomerTags(); reloadAllTags(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [customer.id]);
   const attachTag = async (tagId: number) => {
     await fetch(`/api/customers/${encodeURIComponent(customer.id)}/tags`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tagId }) });
-    setTagPickerOpen(false); reloadCustomerTags();
+    setTagPickerOpen(false); reloadCustomerTags(); onTagsChanged?.(); // refresh the list row too, not just this drawer
   };
   const detachTag = async (tagId: number) => {
     await fetch(`/api/customers/${encodeURIComponent(customer.id)}/tags/${tagId}`, { method: "DELETE" });
-    reloadCustomerTags();
+    reloadCustomerTags(); onTagsChanged?.();
   };
   const createAndAttach = async () => {
     const name = newTagName.trim();
@@ -503,6 +504,7 @@ export function CustomersView({
 
   // ── Bulk operations (tag / suppress / export / merge) → crm-api ──
   const router = useRouter();
+  const dlg = useDialog();
   const [bulkTags, setBulkTags] = useState<{ id: number; name: string; color: string }[]>([]);
   const [bulkTagOpen, setBulkTagOpen] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -516,34 +518,34 @@ export function CustomersView({
     setBulkBusy(true); setBulkTagOpen(false);
     const r = await fetch("/api/customers/bulk/tag", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: selectedIds(), tagId }) });
     setBulkBusy(false);
-    if (r.ok) { setSelected([]); router.refresh(); } else alert("Failed to tag customers.");
+    if (r.ok) { setSelected([]); router.refresh(); } else dlg.toast("Failed to tag customers.");
   };
   const bulkSuppress = async () => {
-    if (!confirm(`Suppress ${selected.length} customer(s)? They will stop receiving email.`)) return;
+    if (!(await dlg.confirm({ title: `Suppress ${selected.length} customer(s)?`, message: "They will stop receiving email.", confirmLabel: "Suppress", danger: true }))) return;
     setBulkBusy(true);
     const r = await fetch("/api/customers/bulk/suppress", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: selectedIds() }) });
     setBulkBusy(false);
-    if (r.ok) { setSelected([]); router.refresh(); } else alert("Failed to suppress.");
+    if (r.ok) { setSelected([]); router.refresh(); } else dlg.toast("Failed to suppress.");
   };
   const bulkExport = async () => {
     setBulkBusy(true);
     const r = await fetch("/api/customers/bulk/export", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: selectedIds() }) });
     setBulkBusy(false);
-    if (!r.ok) { alert("Export failed."); return; }
+    if (!r.ok) { dlg.toast("Export failed."); return; }
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = "customers.csv"; a.click(); URL.revokeObjectURL(url);
   };
   // Export the whole current view (all rows matching the search + filter), not just selected.
   const exportView = async () => {
-    if (total > 1000 && !confirm(`Export all ${total.toLocaleString()} customers in this view?`)) return;
+    if (total > 1000 && !(await dlg.confirm({ title: `Export all ${total.toLocaleString()} customers?`, message: "This exports every row matching your current search and filters.", confirmLabel: "Export" }))) return;
     const params = new URLSearchParams();
     if (serverQuery) params.set("q", serverQuery);
     if (serverTag) params.set("tag", serverTag);
     setBulkBusy(true);
     const r = await fetch(`/api/customers/export?${params.toString()}`);
     setBulkBusy(false);
-    if (!r.ok) { alert("Export failed."); return; }
+    if (!r.ok) { dlg.toast("Export failed."); return; }
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = "customers.csv"; a.click(); URL.revokeObjectURL(url);
@@ -553,7 +555,7 @@ export function CustomersView({
     const r = await fetch("/api/customers/merge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ canonicalId, aliasId }) });
     setBulkBusy(false);
     if (r.ok) { setMergeOpen(false); setSelected([]); router.refresh(); }
-    else { const d = await r.json().catch(() => ({})); alert(d.error || "Merge failed."); }
+    else { const d = await r.json().catch(() => ({})); dlg.toast(d.error || "Merge failed."); }
   };
 
   // Sync when sidebar drives a tab change externally
@@ -624,7 +626,7 @@ export function CustomersView({
   return (
     <div className="p-6 space-y-4" style={{ fontFamily: font }}>
       {drawerCustomer && (
-        <CustomerDrawer customer={drawerCustomer} onClose={() => setDrawerCustomer(null)} />
+        <CustomerDrawer customer={drawerCustomer} onClose={() => setDrawerCustomer(null)} onTagsChanged={() => router.refresh()} />
       )}
       {csvModalOpen && (
         <ImportCsvModal onClose={() => setCsvModalOpen(false)} context="customers" onImported={() => router.refresh()} />

@@ -4,6 +4,7 @@ import { FileText, Plus, Eye, Code, Trash2, X, Copy, Check, Mail } from "lucide-
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useDialog } from "@/components/ui/dialogProvider";
 import {
   createFormAction,
   updateFormAction,
@@ -18,7 +19,23 @@ type FormStatus = "draft" | "active" | "paused" | "archived";
 type FieldType = "email" | "text" | "tel" | "checkbox" | "select" | "textarea";
 type FormField = { id: string; type: FieldType; label: string; required: boolean; options?: string[] };
 type FormVariant = "standard" | "waitlist";
-type FormDesign = { accentColor: string; submitText: string; title: string; description: string; variant?: FormVariant };
+// How an embedded form reveals itself on the host page (Shopify etc.). `inline`
+// renders in place (today's behavior); `popup` is a centered modal the embed
+// loader arms with a trigger + frequency cap. Stored in design so it travels
+// with the form and the embed can read it via the iframe.
+type DisplayTrigger = "immediate" | "delay" | "scroll" | "exit_intent";
+type DisplayFrequency = "always" | "session" | "once" | "days";
+type FormDisplay = {
+  format: "inline" | "popup";
+  trigger: DisplayTrigger;
+  delaySeconds: number;
+  scrollPercent: number;
+  frequency: DisplayFrequency;
+  frequencyDays: number;
+};
+type FormDesign = { accentColor: string; submitText: string; title: string; description: string; variant?: FormVariant; display?: FormDisplay };
+
+const defaultDisplay: FormDisplay = { format: "inline", trigger: "immediate", delaySeconds: 3, scrollPercent: 50, frequency: "session", frequencyDays: 7 };
 type FormTargeting = { urls: string; device: "all" | "desktop" | "mobile" };
 type FormSuccess = { trigger: string; action: "message" | "redirect" | "close"; message?: string; redirectUrl?: string };
 
@@ -82,6 +99,7 @@ const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
 // ================= LIST VIEW =================
 export function FormsView({ forms, lists }: { forms: FormRow[]; lists: ListRow[] }) {
   const router = useRouter();
+  const dlg = useDialog();
   const [editing, setEditing] = useState<FormRow | null>(null);
   const [embedFor, setEmbedFor] = useState<FormRow | null>(null);
   const [picking, setPicking] = useState(false);
@@ -189,7 +207,7 @@ export function FormsView({ forms, lists }: { forms: FormRow[]; lists: ListRow[]
                     <div className="flex items-center gap-2">
                       <a href={`/f/${f.slug}`} target="_blank" rel="noreferrer" style={{ color: "#94A3B8" }} title="Preview"><Eye size={14} /></a>
                       <button onClick={() => setEmbedFor(f)} style={{ color: "#94A3B8", background: "none", border: "none", cursor: "pointer" }} title="Embed code"><Code size={14} /></button>
-                      <button onClick={async () => { if (confirm(`Delete “${f.name}”?`)) { await deleteFormAction(f.id); router.refresh(); } }} style={{ color: "#DC2626", background: "none", border: "none", cursor: "pointer" }} title="Delete"><Trash2 size={14} /></button>
+                      <button onClick={async () => { if (await dlg.confirm({ title: `Delete “${f.name}”?`, message: "This form and its embed will stop working.", confirmLabel: "Delete", danger: true })) { await deleteFormAction(f.id); router.refresh(); } }} style={{ color: "#DC2626", background: "none", border: "none", cursor: "pointer" }} title="Delete"><Trash2 size={14} /></button>
                     </div>
                   </td>
                 </tr>
@@ -207,6 +225,7 @@ function FormBuilder({ initial, lists, onBack, onListsChanged }: {
   initial: FormRow; lists: ListRow[]; onBack: () => void; onListsChanged: () => void;
 }) {
   const router = useRouter();
+  const dlg = useDialog();
   const [tab, setTab] = useState("Design");
   const [name, setName] = useState(initial.name);
   const [type, setType] = useState<FormType>(initial.type);
@@ -226,6 +245,9 @@ function FormBuilder({ initial, lists, onBack, onListsChanged }: {
   const isNew = formId === 0;
   const isWaitlist = design.variant === "waitlist";
   const tabs = ["Design", "Targeting", "Behavior"];
+  // Display config lives inside design; derive a safe view + patch helper.
+  const display = design.display ?? defaultDisplay;
+  const setDisplay = (patch: Partial<FormDisplay>) => setDesign({ ...design, display: { ...display, ...patch } });
   // Waitlist forms are email-only; the placeholder lives on the (single) email field's label.
   const emailField = fields.find((f) => f.type === "email") ?? fields[0];
   const setPlaceholder = (label: string) => emailField && patchField(emailField.id, { label });
@@ -260,7 +282,7 @@ function FormBuilder({ initial, lists, onBack, onListsChanged }: {
   }
 
   async function addList() {
-    const n = prompt("New list name:");
+    const n = await dlg.prompt({ title: "New list", label: "List name", placeholder: "e.g. Newsletter subscribers", confirmLabel: "Create list", required: true });
     if (!n) return;
     const { id } = await createListAction(n);
     setTargetListId(id);
@@ -432,11 +454,65 @@ function FormBuilder({ initial, lists, onBack, onListsChanged }: {
         )}
         {tab === "Behavior" && (
           <>
-            <Section title="TRIGGER">
-              <select value={success.trigger} onChange={(e) => setSuccess({ ...success, trigger: e.target.value })} style={selectStyle}>
-                <option value="immediately">Immediately</option><option value="after_30s">After 30 seconds</option><option value="exit_intent">On exit intent</option><option value="scroll_50">After scrolling 50%</option>
+            <Section title="DISPLAY">
+              <select value={display.format} onChange={(e) => setDisplay({ format: e.target.value as FormDisplay["format"] })} style={selectStyle}>
+                <option value="inline">Inline — render in place on the page</option>
+                <option value="popup">Popup — centered modal over the page</option>
               </select>
             </Section>
+            {display.format === "popup" && (
+              <>
+                <Section title="WHEN TO SHOW">
+                  <select value={display.trigger} onChange={(e) => setDisplay({ trigger: e.target.value as DisplayTrigger })} style={selectStyle}>
+                    <option value="immediate">Immediately on page load</option>
+                    <option value="delay">After a delay</option>
+                    <option value="scroll">After scrolling down the page</option>
+                    <option value="exit_intent">On exit intent (mouse leaves)</option>
+                  </select>
+                </Section>
+                {display.trigger === "delay" && (
+                  <Section title="DELAY">
+                    <div className="flex items-center gap-2">
+                      <input type="number" min={0} max={120} value={display.delaySeconds}
+                        onChange={(e) => setDisplay({ delaySeconds: Math.max(0, Math.min(120, Number(e.target.value) || 0)) })}
+                        style={{ ...selectStyle, width: 90 }} />
+                      <span style={{ fontSize: 12, color: "#64748B" }}>seconds after the page loads</span>
+                    </div>
+                  </Section>
+                )}
+                {display.trigger === "scroll" && (
+                  <Section title="SCROLL DEPTH">
+                    <div className="flex items-center gap-2">
+                      <input type="number" min={1} max={100} value={display.scrollPercent}
+                        onChange={(e) => setDisplay({ scrollPercent: Math.max(1, Math.min(100, Number(e.target.value) || 1)) })}
+                        style={{ ...selectStyle, width: 90 }} />
+                      <span style={{ fontSize: 12, color: "#64748B" }}>% of the page scrolled</span>
+                    </div>
+                  </Section>
+                )}
+                <Section title="HOW OFTEN">
+                  <select value={display.frequency} onChange={(e) => setDisplay({ frequency: e.target.value as DisplayFrequency })} style={selectStyle}>
+                    <option value="session">Once per browser session</option>
+                    <option value="once">Once ever (until they clear cookies)</option>
+                    <option value="days">Once every N days</option>
+                    <option value="always">Every page view (not recommended)</option>
+                  </select>
+                </Section>
+                {display.frequency === "days" && (
+                  <Section title="REPEAT AFTER">
+                    <div className="flex items-center gap-2">
+                      <input type="number" min={1} max={365} value={display.frequencyDays}
+                        onChange={(e) => setDisplay({ frequencyDays: Math.max(1, Math.min(365, Number(e.target.value) || 1)) })}
+                        style={{ ...selectStyle, width: 90 }} />
+                      <span style={{ fontSize: 12, color: "#64748B" }}>days before showing again</span>
+                    </div>
+                  </Section>
+                )}
+                <p style={{ fontSize: 11, color: "#94A3B8", lineHeight: 1.5, marginTop: -2 }}>
+                  Applies to the <strong>embed</strong> on your storefront (Shopify, etc.). The hosted form page always shows in full. Exit intent falls back to a short delay on mobile.
+                </p>
+              </>
+            )}
             <Section title="SUCCESS ACTION">
               <select value={success.action} onChange={(e) => setSuccess({ ...success, action: e.target.value as FormSuccess["action"] })} style={selectStyle}>
                 <option value="message">Show thank-you message</option><option value="redirect">Redirect to URL</option><option value="close">Close popup</option>

@@ -31,6 +31,18 @@ export async function GET(req: Request) {
   if (!API_BASE) return NextResponse.json({ error: "Not configured" }, { status: 503 });
   const cookie = req.headers.get("cookie") || "";
   const { searchParams } = new URL(req.url);
+
+  // List export — crm-api has a dedicated GET /customers/export?listId=N that
+  // returns the CSV directly. Proxy it (and its filename) straight through.
+  const listId = searchParams.get("listId");
+  if (listId) {
+    const r = await fetch(`${API_BASE}/customers/export?listId=${encodeURIComponent(listId)}`, { headers: cookie ? { cookie } : {}, cache: "no-store" });
+    if (!r.ok) return NextResponse.json({ error: "Export failed" }, { status: r.status });
+    const csv = await r.text();
+    const cd = r.headers.get("content-disposition") || `attachment; filename=list-${listId}.csv`;
+    return new Response(csv, { headers: { "Content-Type": "text/csv", "Content-Disposition": cd } });
+  }
+
   const q = searchParams.get("q") || "";
   const filter = FILTER_MAP[searchParams.get("tag") || ""] || "";
   const pageSize = 500;

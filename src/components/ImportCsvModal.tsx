@@ -1,5 +1,6 @@
 import { X, Upload, FileText, CheckCircle2, AlertCircle, ChevronDown } from "lucide-react";
 import { useState, useRef, useCallback } from "react";
+import { useDialog } from "@/components/ui/dialogProvider";
 
 type Step = "upload" | "mapping" | "importing" | "done" | "error";
 
@@ -18,6 +19,7 @@ interface ImportCsvModalProps {
   onClose: () => void;
   context?: "customers" | "list";
   listName?: string;
+  listId?: number;
   onImported?: () => void;
 }
 
@@ -64,7 +66,8 @@ function autoMap(header: string): string {
   return "skip";
 }
 
-export function ImportCsvModal({ onClose, context = "customers", listName, onImported }: ImportCsvModalProps) {
+export function ImportCsvModal({ onClose, context = "customers", listName, listId, onImported }: ImportCsvModalProps) {
+  const dlg = useDialog();
   const [step, setStep] = useState<Step>("upload");
   const [dragging, setDragging] = useState(false);
   const [fileName, setFileName] = useState("");
@@ -83,7 +86,7 @@ export function ImportCsvModal({ onClose, context = "customers", listName, onImp
 
   const handleFile = useCallback((file: File) => {
     if (!file.name.endsWith(".csv") && file.type !== "text/csv") {
-      alert("Please upload a .csv file.");
+      dlg.toast("Please upload a .csv file.");
       return;
     }
     setFileName(file.name);
@@ -101,7 +104,7 @@ export function ImportCsvModal({ onClose, context = "customers", listName, onImp
       setStep("mapping");
     };
     reader.readAsText(file);
-  }, []);
+  }, [dlg]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -123,7 +126,8 @@ export function ImportCsvModal({ onClose, context = "customers", listName, onImp
       const res = await fetch("/api/customers/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csv: remapped }),
+        // In a list context, attach the imported contacts to the list + apply the duplicate rule.
+        body: JSON.stringify({ csv: remapped, ...(listId != null ? { listId } : {}), duplicateHandling: dupOption }),
       });
       const data = await res.json().catch(() => ({}));
       setProgress(100);

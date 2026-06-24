@@ -2,6 +2,7 @@
 
 import { ThemeProvider } from "next-themes";
 import type { ReactNode } from "react";
+import { DialogProvider } from "@/components/ui/dialogProvider";
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
@@ -11,7 +12,7 @@ export function Providers({ children }: { children: ReactNode }) {
       enableSystem={false}
       disableTransitionOnChange
     >
-      {children}
+      <DialogProvider>{children}</DialogProvider>
     </ThemeProvider>
   );
 }
