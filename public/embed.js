@@ -18,7 +18,9 @@
   var iframe = document.createElement("iframe");
   iframe.src = origin + "/f/" + encodeURIComponent(slug) + "?embed=1";
   iframe.title = "Signup form";
-  iframe.setAttribute("loading", "lazy");
+  // NOT lazy: a popup snippet often sits at the bottom of the page, and a lazy
+  // iframe wouldn't load (and couldn't report "I'm a popup") until scrolled into
+  // view — so on a cold load it would wrongly fall back to inline. Load eagerly.
   iframe.style.width = "100%";
   iframe.style.maxWidth = maxWidth + "px";
   iframe.style.height = "520px"; // initial; auto-resized below
@@ -242,6 +244,6 @@
   iframe.addEventListener("load", function () {
     setTimeout(function () { if (!mode) setInline(); }, 3000);
   });
-  // Absolute backstop in case `load` never fires.
-  setTimeout(function () { if (!mode) setInline(); }, 15000);
+  // Absolute backstop in case `load` never fires (generous, for cold loads).
+  setTimeout(function () { if (!mode) setInline(); }, 30000);
 })();
