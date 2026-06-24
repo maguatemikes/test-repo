@@ -175,6 +175,39 @@
     showPopup();
   }
 
+  // ---- page + device targeting: should this form show on THIS page at all? ----
+  function globToRegex(p) {
+    // escape regex specials, then turn * into .*  (so "*/products/*" matches any product URL)
+    var body = p.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+    try { return new RegExp("^" + body + "$", "i"); } catch (e) { return null; }
+  }
+  function matchOne(pattern, href, path) {
+    // No "*" typed → treat it as a "contains" match (auto-wrap in */…/*), so users
+    // can just type "/products" instead of "*/products*". If they DO use "*",
+    // honor it as a full anchored glob for precise control.
+    if (pattern.indexOf("*") === -1) {
+      var n = pattern.toLowerCase();
+      return href.toLowerCase().indexOf(n) !== -1 || path.toLowerCase().indexOf(n) !== -1;
+    }
+    var rx = globToRegex(pattern);
+    return !!(rx && (rx.test(href) || rx.test(path)));
+  }
+  function passesTargeting(t) {
+    if (!t) return true;
+    var dev = t.device || "all";
+    if (dev === "desktop" && isTouch()) return false;
+    if (dev === "mobile" && !isTouch()) return false;
+    var raw = (t.urls || "").trim();
+    if (!raw) return true; // blank = show on every page
+    var pats = raw.split(/[\s,]+/), hadPattern = false;
+    for (var i = 0; i < pats.length; i++) {
+      if (!pats[i]) continue;
+      hadPattern = true;
+      if (matchOne(pats[i], location.href, location.pathname)) return true; // any match wins
+    }
+    return hadPattern ? false : true;
+  }
+
   // ---- messages from the form iframe ----
   window.addEventListener("message", function (e) {
     if (e.origin !== origin) return;
@@ -188,6 +221,8 @@
 
     if (d.type === "crm-form-display" && !mode) {
       var cfg = d.display || {};
+      // URL + device gate — if this page doesn't qualify, never reveal the form.
+      if (!passesTargeting(d.targeting)) { mode = "blocked"; iframe.style.display = "none"; return; }
       if (cfg.format === "popup") { mode = "popup"; armPopup(cfg); }
       else { setInline(); }
       return;

@@ -405,11 +405,7 @@ function FormBuilder({ initial, lists, onBack, onListsChanged }: {
               <input value={design.submitText} onChange={(e) => setDesign({ ...design, submitText: e.target.value })} style={selectStyle} />
             </Section>
             <Section title="BUTTON COLOR">
-              <div className="flex gap-2">
-                {["#0F172A", "#2563EB", "#7C3AED", "#DC2626", "#16A34A"].map((c) => (
-                  <button key={c} onClick={() => setDesign({ ...design, accentColor: c })} className="rounded" style={{ width: 26, height: 26, background: c, border: design.accentColor === c ? "2px solid #0F172A" : "1px solid var(--border)", cursor: "pointer" }} />
-                ))}
-              </div>
+              <ColorPicker value={design.accentColor} onChange={(c) => setDesign({ ...design, accentColor: c })} presets={["#0F172A", "#2563EB", "#7C3AED", "#DC2626", "#16A34A"]} />
             </Section>
           </>
         )}
@@ -431,11 +427,7 @@ function FormBuilder({ initial, lists, onBack, onListsChanged }: {
               <button onClick={addList} style={{ fontSize: 11, color: "#2563EB", background: "none", border: "none", cursor: "pointer", marginTop: 6 }}>+ New list</button>
             </Section>
             <Section title="ACCENT COLOR">
-              <div className="flex gap-2">
-                {["#2563EB", "#7C3AED", "#DC2626", "#16A34A", "#0F172A"].map((c) => (
-                  <button key={c} onClick={() => setDesign({ ...design, accentColor: c })} className="rounded" style={{ width: 26, height: 26, background: c, border: design.accentColor === c ? "2px solid #0F172A" : "1px solid var(--border)", cursor: "pointer" }} />
-                ))}
-              </div>
+              <ColorPicker value={design.accentColor} onChange={(c) => setDesign({ ...design, accentColor: c })} presets={["#2563EB", "#7C3AED", "#DC2626", "#16A34A", "#0F172A"]} />
             </Section>
             <Section title="SUBMIT BUTTON TEXT">
               <input value={design.submitText} onChange={(e) => setDesign({ ...design, submitText: e.target.value })} style={selectStyle} />
@@ -444,7 +436,12 @@ function FormBuilder({ initial, lists, onBack, onListsChanged }: {
         )}
         {tab === "Targeting" && (
           <>
-            <Section title="SHOW ON URLS"><input value={targeting.urls} onChange={(e) => setTargeting({ ...targeting, urls: e.target.value })} placeholder="*/blog/*" style={selectStyle} /></Section>
+            <Section title="SHOW ON URLS">
+              <input value={targeting.urls} onChange={(e) => setTargeting({ ...targeting, urls: e.target.value })} placeholder="/products  (blank = every page)" style={selectStyle} />
+              <p style={{ fontSize: 10, color: "#94A3B8", marginTop: 6, lineHeight: 1.5 }}>
+                Just type a path like <code style={{ color: "#475569" }}>/products</code> — it matches any URL containing it (no <code>*</code> needed). Separate multiple with commas. Use <code>*</code> for exact globs.
+              </p>
+            </Section>
             <Section title="DEVICE">
               <select value={targeting.device} onChange={(e) => setTargeting({ ...targeting, device: e.target.value as FormTargeting["device"] })} style={selectStyle}>
                 <option value="all">All devices</option><option value="desktop">Desktop only</option><option value="mobile">Mobile only</option>
@@ -533,6 +530,42 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <div>
       <p style={{ fontSize: 11, fontWeight: 600, color: "#64748B", letterSpacing: "0.04em", marginBottom: 8 }}>{title}</p>
       {children}
+    </div>
+  );
+}
+
+const isHexColor = (v: string) => /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v.trim());
+
+/** Accent-color control: quick presets + a native color well for ANY color + a
+ *  hex field. Each handler calls onChange once (plain event), so there's no
+ *  re-render loop. */
+function ColorPicker({ value, onChange, presets }: { value: string; onChange: (c: string) => void; presets: string[] }) {
+  const valid = isHexColor(value);
+  const eq = (c: string) => value.trim().toLowerCase() === c.toLowerCase();
+  return (
+    <div>
+      <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+        {presets.map((c) => (
+          <button key={c} type="button" onClick={() => onChange(c)} title={c} aria-label={c}
+            style={{ width: 24, height: 24, borderRadius: 999, background: c, cursor: "pointer",
+              border: eq(c) ? "2px solid #0F172A" : "1px solid var(--border)",
+              boxShadow: eq(c) ? "inset 0 0 0 2px #FFFFFF" : "none" }} />
+        ))}
+        {/* Native color well — pick any custom color */}
+        <label title="Custom color" className="flex items-center justify-center"
+          style={{ width: 24, height: 24, borderRadius: 999, cursor: "pointer", position: "relative", overflow: "hidden",
+            border: "1px dashed #CBD5E1", background: "linear-gradient(135deg,#fff 0%,#fff 50%,#f1f5f9 50%,#f1f5f9 100%)" }}>
+          <Plus size={11} color="#64748B" />
+          <input type="color" value={valid ? value : "#2563EB"} onChange={(e) => onChange(e.target.value)}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, border: "none", padding: 0, cursor: "pointer" }} />
+        </label>
+      </div>
+      <div className="flex items-center gap-2" style={{ marginTop: 8 }}>
+        <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, border: "1px solid var(--border)",
+          background: valid ? value : "#FFFFFF" }} />
+        <input value={value} onChange={(e) => onChange(e.target.value)} placeholder="#2563EB" spellCheck={false}
+          style={{ ...selectStyle, fontFamily: "JetBrains Mono, monospace", textTransform: "lowercase" }} />
+      </div>
     </div>
   );
 }

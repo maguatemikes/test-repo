@@ -36,6 +36,8 @@ async function api(path: string, init: RequestInit) {
 }
 
 // crm-api POST/PATCH body: { name, type, targetListId, fields, design, behavior } (behavior = our success).
+// `status` must be included or the builder's Save/Activate can't change it — the
+// form would persist as draft even after hitting Activate.
 const toApiBody = (input: FormInput) => ({
   name: input.name,
   type: input.type,
@@ -44,6 +46,7 @@ const toApiBody = (input: FormInput) => ({
   design: input.design,
   behavior: input.success,
   targeting: input.targeting,
+  ...(input.status ? { status: input.status } : {}),
 });
 
 export async function createFormAction(input: FormInput) {

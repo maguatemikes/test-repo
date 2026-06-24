@@ -50,6 +50,7 @@ export default async function HostedFormPage({
       fields={(parse(form.fieldsJson) as never) ?? []}
       design={(parse(form.designJson) as never) ?? null}
       success={(parse(form.successBehaviorJson) as never) ?? null}
+      targeting={(parse(form.targetingJson) as never) ?? null}
       embed={embed === "1"}
     />
   );

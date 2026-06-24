@@ -8,10 +8,11 @@ type Field = { id?: string; name?: string; type: string; label: string; required
 type Display = { format?: string; trigger?: string; delaySeconds?: number; scrollPercent?: number; frequency?: string; frequencyDays?: number };
 type Design = { accentColor?: string; submitText?: string; title?: string; description?: string; display?: Display } | null;
 type Success = { action?: string; message?: string; redirectUrl?: string } | null;
+type Targeting = { urls?: string; device?: string } | null;
 
 export function HostedForm({
-  slug, name, fields, design, success, embed = false,
-}: { slug: string; name: string; fields: Field[]; design: Design; success: Success; embed?: boolean }) {
+  slug, name, fields, design, success, targeting = null, embed = false,
+}: { slug: string; name: string; fields: Field[]; design: Design; success: Success; targeting?: Targeting; embed?: boolean }) {
   const accent = design?.accentColor || "#2563EB";
   const title = design?.title || name;
   const description = design?.description || "Subscribe to get the latest updates.";
@@ -50,7 +51,7 @@ export function HostedForm({
   useEffect(() => {
     if (!embed) return;
     const display = design?.display ?? { format: "inline" };
-    const post = () => window.parent?.postMessage({ type: "crm-form-display", slug, display }, "*");
+    const post = () => window.parent?.postMessage({ type: "crm-form-display", slug, display, targeting }, "*");
     post();
     const timers = [120, 400, 1000].map((ms) => window.setTimeout(post, ms));
     return () => timers.forEach(clearTimeout);
