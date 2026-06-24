@@ -235,6 +235,13 @@
     }
   });
 
-  // Fallback: if the form never reports its mode (older form page), show inline.
-  setTimeout(function () { if (!mode) setInline(); }, 2500);
+  // Fallback for OLD form pages that never post a mode. Critically, we wait for
+  // the iframe to actually LOAD first (a cold start can take several seconds),
+  // then give the display message a grace window — otherwise a slow-loading
+  // popup form would wrongly fall back to inline and dump itself into the page.
+  iframe.addEventListener("load", function () {
+    setTimeout(function () { if (!mode) setInline(); }, 3000);
+  });
+  // Absolute backstop in case `load` never fires.
+  setTimeout(function () { if (!mode) setInline(); }, 15000);
 })();
