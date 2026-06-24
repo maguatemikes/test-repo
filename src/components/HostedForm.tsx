@@ -14,6 +14,9 @@ export function HostedForm({
   slug, name, fields, design, success, targeting = null, embed = false,
 }: { slug: string; name: string; fields: Field[]; design: Design; success: Success; targeting?: Targeting; embed?: boolean }) {
   const accent = design?.accentColor || "#2563EB";
+  // In a popup, embed.js frames the iframe (white, rounded, shadow). So the card
+  // itself must sit flush + frameless, or you get two nested frames ("doubling").
+  const isPopup = embed && design?.display?.format === "popup";
   const title = design?.title || name;
   const description = design?.description || "Subscribe to get the latest updates.";
   const submitText = design?.submitText || "Subscribe →";
@@ -31,7 +34,7 @@ export function HostedForm({
     const el = cardRef.current;
     if (!el) return;
     const post = () =>
-      window.parent?.postMessage({ type: "crm-form-height", slug, height: el.offsetHeight + 16 }, "*");
+      window.parent?.postMessage({ type: "crm-form-height", slug, height: el.offsetHeight + (isPopup ? 2 : 16) }, "*");
     post();
     // Repeat a few times so the parent's listener catches the height even if it
     // attaches slightly after the iframe's initial render.
@@ -105,8 +108,8 @@ export function HostedForm({
   }
 
   return (
-    <div style={{ minHeight: embed ? "auto" : "100vh", display: "flex", alignItems: embed ? "flex-start" : "center", justifyContent: "center", padding: embed ? 6 : 16, background: embed ? "transparent" : "var(--background)", fontFamily: font }}>
-      <div ref={cardRef} style={{ width: "100%", maxWidth: 420, background: "#FFFFFF", borderRadius: 12, border: "1px solid var(--border)", boxShadow: embed ? "none" : "0 8px 28px rgba(15,23,42,0.08)", overflow: "hidden" }}>
+    <div style={{ minHeight: embed ? "auto" : "100vh", display: "flex", alignItems: embed ? "flex-start" : "center", justifyContent: "center", padding: isPopup ? 0 : (embed ? 6 : 16), background: embed ? "transparent" : "var(--background)", fontFamily: font }}>
+      <div ref={cardRef} style={{ width: "100%", maxWidth: isPopup ? "100%" : 420, background: "#FFFFFF", borderRadius: isPopup ? 0 : 12, border: isPopup ? "none" : "1px solid var(--border)", boxShadow: embed ? "none" : "0 8px 28px rgba(15,23,42,0.08)", overflow: "hidden" }}>
         <div style={{ height: 6, background: accent }} />
         <div style={{ padding: 28 }}>
           {state === "success" ? (
