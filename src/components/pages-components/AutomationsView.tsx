@@ -347,6 +347,7 @@ function FlowCanvas({ id, preset, onBack }: { id: number | null; preset?: Automa
   const [runLog, setRunLog] = useState<RunEvent[]>([]);
   const [testEmail, setTestEmail] = useState(TEST_EMAIL_DEFAULT);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [forms, setForms] = useState<{ id: number; name: string }[]>([]); // for the "Form submitted" trigger picker
   const runRef = useRef<RunHandle | null>(null);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(preset ? presetToNodes(preset) : [
@@ -355,7 +356,10 @@ function FlowCanvas({ id, preset, onBack }: { id: number | null; preset?: Automa
   ]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(preset ? presetToEdges(preset) : [{ id: "e-trigger-s1", source: "trigger", target: "s1", type: "deletable" }]);
 
-  useEffect(() => { listTemplates().then(setTemplates); }, []);
+  useEffect(() => {
+    listTemplates().then(setTemplates);
+    fetch("/api/forms").then((r) => r.json()).then((d) => setForms(d.forms || [])).catch(() => {});
+  }, []);
 
   // Load an existing automation's graph (trigger + chained steps) into the canvas.
   useEffect(() => {
@@ -364,8 +368,9 @@ function FlowCanvas({ id, preset, onBack }: { id: number | null; preset?: Automa
       if (d) {
         setName(d.automation.name);
         setStatus(d.automation.status);
-        const delayMin = Number((d.triggerConfig as { delayMinutes?: number }).delayMinutes ?? 0);
-        const tNode: Node = { id: "trigger", type: "trigger", position: { x: 250, y: 24 }, deletable: false, data: { triggerType: d.automation.triggerType, delayMin } };
+        const tc = d.triggerConfig as { delayMinutes?: number; formId?: number };
+        const delayMin = Number(tc.delayMinutes ?? 0);
+        const tNode: Node = { id: "trigger", type: "trigger", position: { x: 250, y: 24 }, deletable: false, data: { triggerType: d.automation.triggerType, delayMin, formId: tc.formId } };
         const stepNodes: Node[] = d.steps.map((rs, i) => { idRef.current += 1; return { id: `s${idRef.current}`, type: "step", position: { x: 250, y: 190 + i * 150 }, data: { stepType: typeByKind(rs.kind), config: parseConfig(rs.configJson) } }; });
         const chain: Edge[] = []; let prev = "trigger";
         stepNodes.forEach((n) => { chain.push({ id: `e-${prev}-${n.id}`, source: prev, target: n.id, type: "deletable" }); prev = n.id; });
@@ -484,7 +489,12 @@ function FlowCanvas({ id, preset, onBack }: { id: number | null; preset?: Automa
     const tNode = nodes.find((n) => n.id === "trigger");
     const triggerType = String(tNode?.data.triggerType ?? "contact_added");
     const delayMin = Number(tNode?.data.delayMin ?? 0);
-    const triggerConfig = delayMin > 0 ? { delayMinutes: delayMin } : {};
+    const formId = tNode?.data.formId;
+    const triggerConfig: Record<string, unknown> = {
+      ...(delayMin > 0 ? { delayMinutes: delayMin } : {}),
+      // Scope a form_submitted automation to one form (crm-api: formId). Omitted = any form.
+      ...(triggerType === "form_submitted" && formId != null ? { formId: Number(formId) } : {}),
+    };
     // Linearise the graph by following edges from the trigger.
     const childOf = (src: string) => edges.find((e) => e.source === src)?.target;
     const ordered: Node[] = []; const seen = new Set<string>(); let cur = childOf("trigger");
@@ -631,6 +641,20 @@ function FlowCanvas({ id, preset, onBack }: { id: number | null; preset?: Automa
                   {TRIGGERS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </div>
+              {String(selectedNode.data.triggerType) === "form_submitted" && (
+                <div>
+                  <label style={labelStyle}>Which form</label>
+                  <select
+                    value={selectedNode.data.formId != null ? String(selectedNode.data.formId) : ""}
+                    onChange={(e) => updateData("trigger", { formId: e.target.value ? Number(e.target.value) : undefined })}
+                    style={fieldStyle}
+                  >
+                    <option value="">Any form</option>
+                    {forms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </select>
+                  <p style={{ fontSize: 10, color: "#94A3B8", marginTop: 6 }}>Runs only when this form is submitted. “Any form” = every form.</p>
+                </div>
+              )}
               <div>
                 <label style={labelStyle}>Wait before starting</label>
                 <div className="flex gap-2 items-center">
