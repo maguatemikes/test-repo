@@ -114,13 +114,7 @@ function ConditionRow({ node, onChange, onRemove }: { node: CondNode; onChange: 
   return (
     <div className="flex items-center gap-2">
       <select value={node.facet} onChange={(e) => changeFacet(e.target.value)} style={selStyle(2)}>
-        {FACETS.map((f) =>
-          // Channel isn't backed by the crm-api segment evaluator yet (every value,
-          // incl. "is not", materializes to 0), so disable it to stop users building
-          // silently-empty segments. Flip back on once the backend field is wired.
-          f === "Channel"
-            ? <option key={f} value={f} disabled>Channel (coming soon)</option>
-            : <option key={f}>{f}</option>)}
+        {FACETS.map((f) => <option key={f}>{f}</option>)}
       </select>
       <select value={op} onChange={(e) => onChange({ ...node, op: e.target.value })} style={selStyle(1)}>
         {ops.map((o) => <option key={o}>{o}</option>)}
@@ -132,7 +126,7 @@ function ConditionRow({ node, onChange, onRemove }: { node: CondNode; onChange: 
         </select>
       ) : (
         <input value={node.value} onChange={(e) => onChange({ ...node, value: e.target.value })}
-          placeholder={node.facet === "Tag" ? "tag name" : node.facet === "Channel" ? "e.g. email" : ""}
+          placeholder={node.facet === "Tag" ? "tag name" : node.facet === "Channel" ? "e.g. ebay, shopify" : ""}
           style={{ fontSize: 12, padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 6, flex: 1.5 }} />
       )}
       <button onClick={onRemove} title="Remove condition" style={{ color: "#94A3B8", flexShrink: 0, cursor: "pointer" }}><Trash2 size={13} /></button>

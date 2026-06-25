@@ -67,7 +67,7 @@ export default async function CustomersPage({
     email: r.email,
     phone: "—",
     tags: r.flags?.length ? flagsToTags(r.flags) : computeTags(r),
-    manualTags: (r.tags ?? []).map((t) => ({ name: t.name, color: t.color })),
+    manualTags: (r.tags ?? []).map((t) => ({ id: t.id, name: t.name, color: t.color })),
     spend: `$${Number(r.lifetimeSpend ?? 0).toLocaleString()}`,
     ltv: Number(r.lifetimeSpend ?? 0),
     lastOrder: fmt(r.lastOrderAt),

@@ -89,7 +89,7 @@ function avatarColor(id: string) {
   return colors[idx];
 }
 
-type CRow = (typeof mockCustomers)[number] & { channel?: string; source?: string; manualTags?: { name: string; color: string }[] };
+type CRow = (typeof mockCustomers)[number] & { channel?: string; source?: string; manualTags?: { id?: number; name: string; color: string }[] };
 
 // Column-driven table so columns can be shown/hidden.
 const CUSTOMER_COLUMNS: { key: string; label: string; render: (c: CRow) => React.ReactNode }[] = [
@@ -132,24 +132,31 @@ const CUSTOMER_COLUMNS: { key: string; label: string; render: (c: CRow) => React
 ];
 const HIDEABLE_COLUMNS = CUSTOMER_COLUMNS.filter((c) => c.key !== "name");
 
-function CustomerDrawer({ customer, onClose, onTagsChanged }: { customer: typeof mockCustomers[0]; onClose: () => void; onTagsChanged?: () => void }) {
+type DrawerOrder = { id: number; orderNumber: string; total: number; status: string; date: string | null; itemCount: number; channel: string | null };
+const ordersCache = new Map<string, DrawerOrder[]>(); // cache per customer → instant drawer re-open
+
+function CustomerDrawer({ customer, onClose, onTagsChanged }: { customer: CRow; onClose: () => void; onTagsChanged?: () => void }) {
   const [drawerTab, setDrawerTab] = useState<DrawerTab>("overview");
   const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
-  const [orders, setOrders] = useState<{ id: number; orderNumber: string; total: number; status: string; date: string | null; itemCount: number; channel: string | null }[]>([]);
-  const [ordersLoading, setOrdersLoading] = useState(true);
+  // Orders aren't in the list payload, so they're fetched — but seed from cache so
+  // re-opening is instant, and only show the skeleton on a true first load.
+  const [orders, setOrders] = useState<DrawerOrder[]>(ordersCache.get(customer.id) ?? []);
+  const [ordersLoading, setOrdersLoading] = useState(!ordersCache.has(customer.id));
   useEffect(() => {
     let active = true;
-    setOrdersLoading(true);
+    if (!ordersCache.has(customer.id)) setOrdersLoading(true);
     fetch(`/api/customers/${encodeURIComponent(customer.id)}/orders`)
       .then((r) => r.json())
-      .then((d) => { if (active) setOrders(d.orders || []); })
-      .catch(() => { if (active) setOrders([]); })
+      .then((d) => { if (active) { const o = d.orders || []; ordersCache.set(customer.id, o); setOrders(o); } })
+      .catch(() => { if (active && !ordersCache.has(customer.id)) setOrders([]); })
       .finally(() => { if (active) setOrdersLoading(false); });
     return () => { active = false; };
   }, [customer.id]);
 
-  // Manual tags (crm-api): the customer's tags + the org tag library.
-  const [manualTags, setManualTags] = useState<{ id: number; name: string; color: string }[]>([]);
+  // Manual tags: SEED from the list row (crm-api now sends id/name/color), so they
+  // show instantly with NO fetch on open. The org tag catalog is fetched lazily,
+  // only when the "+ Tag" picker is first opened.
+  const [manualTags, setManualTags] = useState<{ id?: number; name: string; color: string }[]>(customer.manualTags ?? []);
   const [allTags, setAllTags] = useState<{ id: number; name: string; color: string }[]>([]);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [newTagName, setNewTagName] = useState("");
@@ -157,7 +164,7 @@ function CustomerDrawer({ customer, onClose, onTagsChanged }: { customer: typeof
     fetch(`/api/customers/${encodeURIComponent(customer.id)}/tags`).then((r) => r.json()).then((d) => setManualTags(d.tags || [])).catch(() => {});
   const reloadAllTags = () =>
     fetch(`/api/tags`).then((r) => r.json()).then((d) => setAllTags(d.tags || [])).catch(() => {});
-  useEffect(() => { reloadCustomerTags(); reloadAllTags(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [customer.id]);
+  const openTagPicker = () => { if (!allTags.length) reloadAllTags(); setTagPickerOpen((o) => !o); };
   const attachTag = async (tagId: number) => {
     await fetch(`/api/customers/${encodeURIComponent(customer.id)}/tags`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tagId }) });
     setTagPickerOpen(false); reloadCustomerTags(); onTagsChanged?.(); // refresh the list row too, not just this drawer
@@ -248,13 +255,13 @@ function CustomerDrawer({ customer, onClose, onTagsChanged }: { customer: typeof
           <div className="flex items-center gap-1.5 flex-wrap">
             <span style={{ fontSize: 10, fontWeight: 600, color: "#94A3B8", letterSpacing: "0.04em", marginRight: 2 }}>TAGS</span>
             {manualTags.map((t) => (
-              <span key={t.id} className="rounded-full px-2 py-0.5 flex items-center gap-1" style={{ fontSize: 10, fontWeight: 500, background: `${t.color || "#2563EB"}1f`, color: t.color || "#2563EB" }}>
+              <span key={t.id ?? t.name} className="rounded-full px-2 py-0.5 flex items-center gap-1" style={{ fontSize: 10, fontWeight: 500, background: `${t.color || "#2563EB"}1f`, color: t.color || "#2563EB" }}>
                 {t.name}
-                <button onClick={() => detachTag(t.id)} title="Remove" style={{ color: "inherit", opacity: 0.6, cursor: "pointer", display: "flex" }}><X size={9} /></button>
+                {t.id != null && <button onClick={() => detachTag(t.id!)} title="Remove" style={{ color: "inherit", opacity: 0.6, cursor: "pointer", display: "flex" }}><X size={9} /></button>}
               </span>
             ))}
             <div style={{ position: "relative" }}>
-              <button onClick={() => setTagPickerOpen((o) => !o)} className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, border: "1px dashed var(--border)", color: "#64748B", cursor: "pointer", background: "#FFFFFF" }}>+ Tag</button>
+              <button onClick={openTagPicker} className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 500, border: "1px dashed var(--border)", color: "#64748B", cursor: "pointer", background: "#FFFFFF" }}>+ Tag</button>
               {tagPickerOpen && (
                 <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, width: 200, background: "#FFFFFF", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.1)", zIndex: 120, padding: 6 }}>
                   {allTags.filter((t) => !manualTags.some((m) => m.id === t.id)).map((t) => (
@@ -442,7 +449,7 @@ interface CustomersViewProps {
   initialTab?: SubTab;
   onSubTabChange?: (tab: SubTab) => void;
   /** Current page of customers from the DB (already searched + paginated server-side). */
-  dbCustomers?: ((typeof mockCustomers)[number] & { channel?: string; source?: string; manualTags?: { name: string; color: string }[] })[];
+  dbCustomers?: ((typeof mockCustomers)[number] & { channel?: string; source?: string; manualTags?: { id?: number; name: string; color: string }[] })[];
   total?: number;
   page?: number;
   pageSize?: number;
@@ -499,7 +506,7 @@ export function CustomersView({
     return () => document.removeEventListener("mousedown", handler);
   }, [colsOpen]);
   const [selected, setSelected] = useState<string[]>([]);
-  const [drawerCustomer, setDrawerCustomer] = useState<typeof mockCustomers[0] | null>(null);
+  const [drawerCustomer, setDrawerCustomer] = useState<CRow | null>(null);
   const [csvModalOpen, setCsvModalOpen] = useState(false);
 
   // ── Bulk operations (tag / suppress / export / merge) → crm-api ──
@@ -626,7 +633,7 @@ export function CustomersView({
   return (
     <div className="p-6 space-y-4" style={{ fontFamily: font }}>
       {drawerCustomer && (
-        <CustomerDrawer customer={drawerCustomer} onClose={() => setDrawerCustomer(null)} onTagsChanged={() => router.refresh()} />
+        <CustomerDrawer key={drawerCustomer.id} customer={drawerCustomer} onClose={() => setDrawerCustomer(null)} onTagsChanged={() => router.refresh()} />
       )}
       {csvModalOpen && (
         <ImportCsvModal onClose={() => setCsvModalOpen(false)} context="customers" onImported={() => router.refresh()} />
