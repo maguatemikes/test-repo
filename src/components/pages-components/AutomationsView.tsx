@@ -8,6 +8,7 @@ import { listTemplates, type Template } from "@/lib/templates";
 import { listAutomations, getAutomation, createAutomation, updateAutomation, activateAutomation, pauseAutomation, parseConfig, type Automation, type StepInput } from "@/lib/automations";
 import { createCampaign, deleteCampaign } from "@/lib/campaigns";
 import { runFlow, type RunEvent, type RunStepStatus, type RunPlanStep, type RunHandle } from "@/lib/automationRun";
+import { testRun, getExecution, mapExecStatus, STEP_KIND_LABEL } from "@/lib/automationExec";
 
 const TEST_EMAIL_DEFAULT = "maguatemikes@gmail.com";
 // Delay units → milliseconds (seconds let you watch a test run in real time).
@@ -346,7 +347,7 @@ function FlowCanvas({ id, preset, onBack }: { id: number | null; preset?: Automa
   const [running, setRunning] = useState(false);
   const [runLog, setRunLog] = useState<RunEvent[]>([]);
   const [testEmail, setTestEmail] = useState(TEST_EMAIL_DEFAULT);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true); // show the manual test-run bar (test email + Run) by default — it was too easy to miss when collapsed
   const [forms, setForms] = useState<{ id: number; name: string }[]>([]); // for the "Form submitted" trigger picker
   const runRef = useRef<RunHandle | null>(null);
 
@@ -471,14 +472,47 @@ function FlowCanvas({ id, preset, onBack }: { id: number | null; preset?: Automa
     setEdges((es) => es.map((ed) => ({ ...ed, animated: false, style: undefined })));
   };
 
-  const startRun = () => {
+  // Execute = a REAL server-side run (crm-api engine), not a browser simulation.
+  // Fire /test-run, then poll the execution log and drive the canvas + log from
+  // the actual per-step statuses. The trigger node maps to stepOrder -1; each
+  // step node to stepOrder+1 (the lineralised order); 9999 = the completion marker.
+  const startRun = async () => {
     if (running) return;
     setPanelOpen(true); setRunLog([]); clearRunVisuals();
     const email = testEmail.trim() || TEST_EMAIL_DEFAULT;
-    const plan = buildPlan(email);
-    if (plan.length <= 1) { setRunLog([{ stepId: "trigger", title: "Execute workflow", status: "failed", detail: "Add at least one step before running.", ts: Date.now() }]); return; }
+    const ordered = orderedForRun();
+    if (ordered.length <= 1) { setRunLog([{ stepId: "trigger", title: "Execute workflow", status: "failed", detail: "Add at least one step before running.", ts: Date.now() }]); return; }
+    if (currentId == null) { setRunLog([{ stepId: "trigger", title: "Execute workflow", status: "failed", detail: "Save the automation first, then run it.", ts: Date.now() }]); return; }
     setRunning(true);
-    runRef.current = runFlow(plan, applyRunEvent, () => { setRunning(false); setEdges((es) => es.map((ed) => ({ ...ed, animated: false, style: undefined }))); });
+    const started = await testRun(currentId, email);
+    if (!started.ok || !started.executionId) {
+      applyRunEvent({ stepId: "trigger", title: "Execute workflow", status: "failed", detail: started.error || "Couldn't start the run.", ts: Date.now() });
+      setRunning(false); return;
+    }
+    const execId = started.executionId;
+    const nodeIdFor = (stepOrder: number) => (stepOrder === -1 ? ordered[0]?.id : ordered[stepOrder + 1]?.id);
+    const lastStatus = new Map<number, string>();
+    let cancelled = false;
+    runRef.current = { cancel: () => { cancelled = true; } };
+    const tick = async () => {
+      if (cancelled) return;
+      const ex = await getExecution(execId);
+      (ex?.steps ?? []).forEach((s) => {
+        if (s.stepOrder === 9999) return; // completion marker — not a canvas node
+        if (lastStatus.get(s.stepOrder) === s.status) return; // emit only on change
+        lastStatus.set(s.stepOrder, s.status);
+        const nodeId = nodeIdFor(s.stepOrder);
+        if (!nodeId) return;
+        applyRunEvent({ stepId: nodeId, title: STEP_KIND_LABEL[s.stepKind] ?? s.stepKind, status: mapExecStatus(s.status), detail: s.detail ?? "", ts: Date.now() });
+      });
+      if (ex && (ex.status === "completed" || ex.status === "failed")) {
+        setRunning(false);
+        setEdges((es) => es.map((ed) => ({ ...ed, animated: false, style: undefined })));
+        return;
+      }
+      if (!cancelled) setTimeout(tick, 5000); // Ryan's recommended poll interval
+    };
+    tick();
   };
 
   const stopRun = () => { runRef.current?.cancel(); setRunning(false); setEdges((es) => es.map((ed) => ({ ...ed, animated: false, style: undefined }))); };
@@ -506,7 +540,7 @@ function FlowCanvas({ id, preset, onBack }: { id: number | null; preset?: Automa
       aid = res.id; setCurrentId(aid);
     }
     const dto: StepInput[] = ordered.map((n) => ({ kind: KIND_BY_TYPE[n.data.stepType as StepType], branch: "main", parentStepId: null, config: (n.data.config as Record<string, unknown>) ?? {} }));
-    const ok = await updateAutomation(aid, { name: name.trim() || "Untitled automation", triggerConfig, steps: dto });
+    const ok = await updateAutomation(aid, { name: name.trim() || "Untitled automation", triggerType, triggerConfig, steps: dto });
     setBusy(false); setSavedNote(ok ? "Saved" : "Save failed");
   };
 
@@ -591,7 +625,7 @@ function FlowCanvas({ id, preset, onBack }: { id: number | null; preset?: Automa
             <div className="flex items-center gap-2" style={{ padding: "8px 12px", borderBottom: "1px solid #F1F5F9", flexShrink: 0 }}>
               <FlaskConical size={13} color="#7C3AED" />
               <span style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>Execute workflow</span>
-              <span title="Emails really send to the test address. Delays are compressed and branch/tag steps are simulated — the live execution engine ships with crm-api. No live audience is enrolled." style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", color: "#7C3AED", background: "#F5F3FF", padding: "2px 6px", borderRadius: 999 }}>TEST MODE</span>
+              <span title="Runs on the crm-api engine against the test address — emails really send, delays are compressed for testing. Test mode; no live audience is enrolled." style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", color: "#7C3AED", background: "#F5F3FF", padding: "2px 6px", borderRadius: 999 }}>TEST MODE</span>
               <input value={testEmail} onChange={(e) => setTestEmail(e.target.value)} placeholder="test email" style={{ fontSize: 11, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: 6, width: 210, color: "#0F172A" }} />
               <button onClick={running ? stopRun : startRun} className="flex items-center gap-1" style={{ fontSize: 11, fontWeight: 500, color: "#FFFFFF", background: running ? "#DC2626" : "#7C3AED", padding: "4px 12px", border: "none", borderRadius: 6, cursor: "pointer" }}>
                 {running ? <><X size={12} /> Stop</> : <><Play size={12} /> Run</>}
@@ -601,7 +635,7 @@ function FlowCanvas({ id, preset, onBack }: { id: number | null; preset?: Automa
             </div>
             <div style={{ flex: 1, overflowY: "auto", padding: "6px 12px" }}>
               {runLog.length === 0 ? (
-                <p style={{ fontSize: 11, color: "#94A3B8", padding: "8px 0" }}>Press <b>Run</b> to execute the flow once. Email steps really send to the test address above; delays/branches are simulated until the live engine lands.</p>
+                <p style={{ fontSize: 11, color: "#94A3B8", padding: "8px 0" }}>Press <b>Run</b> to execute the flow once on the crm-api engine. Emails really send to the test address above; delays are compressed for testing.</p>
               ) : (
                 runLog.map((e, i) => {
                   const c = RUN_RING[e.status];

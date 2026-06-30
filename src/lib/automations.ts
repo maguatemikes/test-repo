@@ -47,7 +47,7 @@ export async function createAutomation(input: { name: string; description?: stri
   return r.ok ? { ok: true, id: d.id } : { ok: false };
 }
 
-export async function updateAutomation(id: number, input: { name?: string; description?: string; triggerConfig?: Record<string, unknown>; steps?: StepInput[] }): Promise<boolean> {
+export async function updateAutomation(id: number, input: { name?: string; description?: string; triggerType?: string; triggerConfig?: Record<string, unknown>; steps?: StepInput[] }): Promise<boolean> {
   const r = await fetch(`/api/automations/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
   return r.ok;
 }

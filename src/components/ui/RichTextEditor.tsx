@@ -16,8 +16,9 @@ import { Section } from "@/components/ui/section";
 import { useDialog } from "@/components/ui/dialogProvider";
 import GlobalDragHandle from "tiptap-extension-global-drag-handle";
 import AutoJoiner from "tiptap-extension-auto-joiner";
-import { Bold, Italic, Strikethrough, Heading1, Heading2, Heading3, List, ListOrdered, Quote, Minus, Link2, ImageIcon, Columns2, Columns3, Braces, Palette, Undo2, Redo2 } from "lucide-react";
+import { Bold, Italic, Strikethrough, Heading1, Heading2, Heading3, List, ListOrdered, Quote, Minus, Link2, ImageIcon, Columns2, Columns3, Braces, Palette, Undo2, Redo2, Sparkles, Loader2, Wand2, Expand, Minimize2, Type, type LucideIcon } from "lucide-react";
 import { useState } from "react";
+import { aiComplete, aiTextToHtml, type AiAction } from "@/lib/ai";
 
 const font = "Helvetica Neue, Helvetica, Arial, sans-serif";
 
@@ -112,6 +113,34 @@ function placeAndUpload(view: EditorView, file: File, pos?: number, onError?: (m
     .finally(() => URL.revokeObjectURL(tempSrc));
 }
 
+/** Run an AI action and apply the result to the editor. For transform actions
+ *  (rewrite/expand/summarize/retone) the current selection is the source and
+ *  gets replaced; for `generate` the instruction is passed through and the
+ *  result is inserted at the cursor. Errors surface via the toast callback. */
+async function applyAi(
+  editor: Editor,
+  action: AiAction,
+  opts: { tone?: string; instruction?: string },
+  toast: (m: string) => void,
+): Promise<void> {
+  const { from, to } = editor.state.selection;
+  let input = (opts.instruction ?? "").trim();
+  if (action !== "generate") {
+    input = editor.state.doc.textBetween(from, to, "\n").trim();
+    if (!input) { toast("Select some text first, then pick an AI action."); return; }
+  }
+  if (!input) return; // generate with no instruction → nothing to do
+  try {
+    const text = await aiComplete(action, input, opts.tone);
+    if (!text) { toast("AI returned nothing — try again."); return; }
+    const html = aiTextToHtml(text);
+    if (action === "generate") editor.chain().focus().insertContent(html).run();
+    else editor.chain().focus().insertContentAt({ from, to }, html).run();
+  } catch (e) {
+    toast((e as Error).message);
+  }
+}
+
 /** TipTap block editor — Beehiiv-style writing experience. Emits HTML + JSON. */
 export function RichTextEditor({ value, doc, accent, onChange, placeholder = "Write your email…", bare = false }: {
   value?: string;
@@ -126,6 +155,7 @@ export function RichTextEditor({ value, doc, accent, onChange, placeholder = "Wr
   bare?: boolean;
 }) {
   const dlg = useDialog();
+  const [bubbleAiBusy, setBubbleAiBusy] = useState(false);
   const editor = useEditor({
     immediatelyRender: false, // avoid Next.js SSR hydration mismatch
     extensions: [
@@ -183,6 +213,10 @@ export function RichTextEditor({ value, doc, accent, onChange, placeholder = "Wr
           <BubbleBtn active={editor.isActive("strike")} on={() => editor.chain().focus().toggleStrike().run()}><Strikethrough size={13} /></BubbleBtn>
           <BubbleBtn active={editor.isActive("heading", { level: 2 })} on={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><Heading2 size={14} /></BubbleBtn>
           <BubbleBtn active={editor.isActive("link")} on={async () => { const u = await dlg.prompt({ title: "Add link", label: "Link URL", defaultValue: "https://", placeholder: "https://example.com", confirmLabel: "Add link" }); if (u) editor.chain().focus().extendMarkRange("link").setLink({ href: u }).run(); }}><Link2 size={13} /></BubbleBtn>
+          <div style={{ width: 1, height: 16, background: "rgba(255,255,255,0.18)", margin: "0 2px" }} />
+          <BubbleBtn active={false} on={async () => { if (bubbleAiBusy) return; setBubbleAiBusy(true); await applyAi(editor, "rewrite", {}, dlg.toast); setBubbleAiBusy(false); }}>
+            {bubbleAiBusy ? <Loader2 size={13} className="nx-ai-spin" /> : <Sparkles size={13} />}
+          </BubbleBtn>
         </div>
       </BubbleMenu>
       <div style={bare ? {} : { maxHeight: 420, overflowY: "auto" }}>
@@ -247,6 +281,7 @@ function Toolbar({ editor, bare = false }: { editor: Editor; bare?: boolean }) {
       <Btn title="Three columns" on={() => editor.chain().focus().setColumns(3).run()}><Columns3 size={15} /></Btn>
       <Btn title="Color section" active={editor.isActive("section")} on={() => editor.chain().focus().setSection().run()}><Palette size={15} /></Btn>
       {sep}
+      <AiMenu editor={editor} />
       <MergeMenu editor={editor} />
       {sep}
       <Btn title="Link" active={editor.isActive("link")} on={addLink}><Link2 size={14} /></Btn>
@@ -282,6 +317,66 @@ function MergeMenu({ editor }: { editor: Editor }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** Toolbar dropdown for AI writing actions. "Write with AI…" generates from a
+ *  prompt; the rest transform the current selection (disabled when nothing is
+ *  selected). All route through /api/ai/complete via applyAi(). */
+function AiMenu({ editor }: { editor: Editor }) {
+  const dlg = useDialog();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const hasSelection = !editor.state.selection.empty;
+
+  const run = async (fn: () => Promise<void>) => {
+    setOpen(false);
+    setBusy(true);
+    await fn();
+    setBusy(false);
+  };
+  const transform = (action: AiAction, tone?: string) => run(() => applyAi(editor, action, { tone }, dlg.toast));
+  const generate = () =>
+    run(async () => {
+      const instruction = await dlg.prompt({ title: "Write with AI", label: "What should it write?", placeholder: "e.g. a 2-line promo for bulk socks, upbeat tone", confirmLabel: "Generate" });
+      if (instruction == null || !instruction.trim()) return;
+      await applyAi(editor, "generate", { instruction }, dlg.toast);
+    });
+
+  return (
+    <div style={{ position: "relative" }} onMouseLeave={() => setOpen(false)}>
+      <button type="button" title="AI assist — write, rewrite, expand, summarize" onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen((o) => !o)}
+        className="flex items-center justify-center rounded"
+        style={{ width: 28, height: 28, color: "#7C3AED", background: open ? "#F5F3FF" : "transparent", border: "none", cursor: "pointer" }}>
+        {busy ? <Loader2 size={16} className="nx-ai-spin" /> : <Sparkles size={17} strokeWidth={2.4} />}
+      </button>
+      {open && (
+        <div style={{ position: "absolute", top: 32, left: 0, zIndex: 30, background: "#FFFFFF", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 8px 28px rgba(15,23,42,0.14)", padding: 4, width: 214 }}>
+          <AiRow icon={Sparkles} label="Write with AI…" onClick={generate} />
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", color: "#94A3B8", padding: "7px 8px 3px", borderTop: "1px solid var(--border)", marginTop: 2 }}>{hasSelection ? "SELECTED TEXT" : "SELECT TEXT TO ENABLE"}</div>
+          <AiRow icon={Wand2} label="Improve writing" disabled={!hasSelection} onClick={() => transform("rewrite")} />
+          <AiRow icon={Expand} label="Expand" disabled={!hasSelection} onClick={() => transform("expand")} />
+          <AiRow icon={Minimize2} label="Summarize" disabled={!hasSelection} onClick={() => transform("summarize")} />
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", color: "#94A3B8", padding: "7px 8px 3px", borderTop: "1px solid var(--border)", marginTop: 2 }}>CHANGE TONE</div>
+          {["Professional", "Friendly", "Casual", "Persuasive"].map((t) => (
+            <AiRow key={t} icon={Type} label={t} disabled={!hasSelection} onClick={() => transform("retone", t.toLowerCase())} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AiRow({ icon: Icon, label, onClick, disabled }: { icon: LucideIcon; label: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button type="button" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={onClick}
+      className="flex items-center gap-2.5 w-full rounded text-left"
+      style={{ padding: "7px 9px", fontSize: 13, color: disabled ? "#CBD5E1" : "#0F172A", background: "transparent", cursor: disabled ? "not-allowed" : "pointer" }}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = "#EFF6FF"; }}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+      <span className="flex items-center justify-center" style={{ width: 22, height: 22, borderRadius: 5, background: "#F1F5F9", color: "#475569" }}><Icon size={13} /></span>
+      {label}
+    </button>
   );
 }
 
@@ -350,6 +445,8 @@ function ProseStyles({ bare = false }: { bare?: boolean }) {
       .nx-img-wrap[data-selected="true"] .nx-img { outline: 2px solid #2563EB; outline-offset: 2px; }
       .nx-img-del { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border-radius: 999px; background: rgba(15,23,42,0.65); color: #fff; border: none; display: none; align-items: center; justify-content: center; cursor: pointer; }
       .nx-img-wrap:hover .nx-img-del { display: flex; }
+      .nx-ai-spin { animation: nx-ai-spin 0.7s linear infinite; }
+      @keyframes nx-ai-spin { to { transform: rotate(360deg); } }
     `}</style>
   );
 }
